@@ -8,6 +8,8 @@ export interface HmpHousePlayer {
     nickname: string;
     connected?: boolean;
     house?: HmpNativeHouse;
+    /** Absent on a host older than `player.commonRooms`. */
+    commonRooms?: Array<Exclude<HmpNativeHouse, "Unaffiliated">>;
     sendChat?(message: string): void;
 }
 
@@ -90,6 +92,16 @@ export interface HmpHousePointsApi<P = HmpHousePlayer> {
     recover(reference: string): Promise<HmpHousePointTransaction>;
 }
 
+/** Other houses' common rooms a character may enter besides their own, kept on the character. */
+export interface HmpHouseCommonRoomsApi<P = HmpHousePlayer> {
+    list(target: P | number): Promise<HmpHouseId[]>;
+    grant(target: P | number, house: HmpHouseId): Promise<boolean>;
+    revoke(target: P | number, house: HmpHouseId): Promise<boolean>;
+    clear(target: P | number): Promise<number>;
+    /** Applies the grants, or every common room for `commonRoomGroups`; null on a host without `player.commonRooms`. */
+    sync(player: P): Promise<HmpHouseId[] | null>;
+}
+
 export interface HmpHousesStatus {
     state: "starting" | "ready" | "degraded" | "stopped";
     lastError: string;
@@ -101,6 +113,7 @@ export interface HmpHousesStatus {
 export interface HmpHouses<P = HmpHousePlayer> {
     membership: HmpHouseMembershipApi<P>;
     points: HmpHousePointsApi<P>;
+    commonRooms: HmpHouseCommonRoomsApi<P>;
     status(): HmpHousesStatus;
 }
 

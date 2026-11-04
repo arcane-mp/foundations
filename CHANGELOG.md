@@ -32,6 +32,19 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   The shared typings declare `pronoun` on looks and creator snapshots and both creator capabilities. It
   needs HogwartsMP `1.11` or newer for the creator's `pronoun` and `hairColourHex`; an older host
   ignores it, and the creator shows neither and no longer asks for a dormitory it could not keep.
+- `hmp-houses` `commonRoomGroups` and the `commonRooms` export let a character enter other houses' common
+  rooms besides their own, for staff or guests: the entrance opens for them as for a member of that house,
+  while their house and robes stay as they are. `commonRooms.grant`, `revoke`, `list` and `clear` keep a
+  character's grants in its `hmp-core` metadata, and members of a listed group get every common room.
+  Access is applied whenever the character loads or one of those groups changes, and taken back when the
+  character unloads or `hmp-houses` stops. `commonRoomGroups` is empty by default, so nobody enters
+  another house's common room. It needs HogwartsMP `1.11` or newer for `player.commonRooms`; an older host
+  ignores it.
+- `hmp-houses` `greatHallBanners` hangs one house's banners at the head of the Great Hall for every
+  player: a house, `"none"` to take them down, or `"leader"` for the House Cup leader's, hung again
+  whenever points change and left as they are on a tie. It defaults to `"game"`, leaving the banners to
+  the game, and stopping `hmp-houses` hands them back. It needs HogwartsMP `1.11` or newer for
+  `World.setGreatHallBanners`; an older host ignores it.
 
 ### Fixed
 

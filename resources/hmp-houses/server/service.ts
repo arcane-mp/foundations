@@ -1,11 +1,24 @@
 import normalizeModule = require("../shared/normalize");
-import type { HmpHouseId, HmpHouseMutationOptions, HmpHousePointOptions, HmpHousePointTransaction } from "../types";
+import type { HmpCoreGroup } from "../../hmp-core/types";
+import type { HmpHouseId, HmpHouseMutationOptions, HmpHousePointOptions, HmpHousePointTransaction, HmpHouseStanding } from "../types";
 import type { HousesDependencies, HousesService, Player, PointDraft } from "./internal";
 
 const { HOUSES, house: normalizeHouse, nativeHouse, clean, positiveId, limit, signedAmount, metadata } = normalizeModule;
+const COMMON_ROOMS_KEY = "hmp-houses:commonRooms";
 
 function messageOf(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+/** The one house with the most points; null on a tie at the top, which includes no house having any. */
+function leader(standings: ReadonlyArray<HmpHouseStanding>): HmpHouseId | null {
+    const top = Math.max(...standings.map((row) => row.points));
+    const leaders = standings.filter((row) => row.points === top);
+    return leaders.length === 1 ? leaders[0].house : null;
+}
+
+function grantedRooms(value: unknown): HmpHouseId[] {
+    return Array.isArray(value) ? HOUSES.filter((entry) => value.includes(entry)) : [];
 }
 
 function createHousesService(dependencies: HousesDependencies): HousesService {
@@ -13,10 +26,15 @@ function createHousesService(dependencies: HousesDependencies): HousesService {
     const now = dependencies.now || Date.now;
     const startedAt = now();
     const syncedPlayers = new Set<number>();
+    const commonRoomPlayers = new Map<number, Player>();
     let state: "starting" | "ready" | "degraded" | "stopped" = "starting";
     let lastError = "";
     let pendingTransactions = 0;
     let startPromise: Promise<void> | null = null;
+    let warnedCommonRooms = false;
+    let warnedBanners = false;
+    let hungBanners: HmpHouseId | "none" | null = null;
+    let bannerQueue = Promise.resolve();
 
     function start(): Promise<void> {
         if (state === "stopped") return Promise.reject(new Error("hmp-houses is stopped"));
@@ -26,6 +44,7 @@ function createHousesService(dependencies: HousesDependencies): HousesService {
             pendingTransactions = (await repository.pendingPoints(200)).length;
             state = "ready";
             lastError = "";
+            await queueBanners();
         }).catch((error) => {
             state = "degraded";
             lastError = messageOf(error).slice(0, 191);
@@ -165,7 +184,10 @@ function createHousesService(dependencies: HousesDependencies): HousesService {
             throw error;
         }
         pendingTransactions = (await repository.pendingPoints(200)).length;
-        if (shouldEmit) events.emit("hmp:houses:points", { transaction, standing: await repository.standing(transaction.house) });
+        if (shouldEmit) {
+            events.emit("hmp:houses:points", { transaction, standing: await repository.standing(transaction.house) });
+            await followLeader();
+        }
         return transaction;
     }
 
@@ -178,23 +200,135 @@ function createHousesService(dependencies: HousesDependencies): HousesService {
         const shouldEmit = existing.status !== "completed";
         const transaction = shouldEmit ? await repository.applyPoint(reference, config.allowNegativePoints) : existing;
         pendingTransactions = (await repository.pendingPoints(200)).length;
-        if (shouldEmit) events.emit("hmp:houses:points", { transaction, standing: await repository.standing(transaction.house), recovered: true });
+        if (shouldEmit) {
+            events.emit("hmp:houses:points", { transaction, standing: await repository.standing(transaction.house), recovered: true });
+            await followLeader();
+        }
         return transaction;
+    }
+
+    // Banners are server-wide, so hanging them queues behind any earlier hang and reads the latest standings.
+    function queueBanners(): Promise<void> {
+        bannerQueue = bannerQueue.then(hangBanners).catch((error) => { logger.warn(`[hmp-houses] could not hang the Great Hall banners: ${messageOf(error)}`); });
+        return bannerQueue;
+    }
+
+    function followLeader(): Promise<void> {
+        return config.greatHallBanners === "leader" ? queueBanners() : Promise.resolve();
+    }
+
+    async function hangBanners(): Promise<void> {
+        if (config.greatHallBanners === "game") return;
+        const world = dependencies.world;
+        if (typeof world?.setGreatHallBanners !== "function") {
+            if (!warnedBanners) {
+                warnedBanners = true;
+                logger.warn("[hmp-houses] greatHallBanners needs a HogwartsMP host with World.setGreatHallBanners; the Great Hall keeps the game's banners");
+            }
+            return;
+        }
+        const banners = config.greatHallBanners === "leader" ? leader(await repository.standings()) : config.greatHallBanners;
+        if (!banners || banners === hungBanners || state === "stopped") return;
+        if (world.setGreatHallBanners(banners === "none" ? "none" : nativeHouse(banners))) hungBanners = banners;
+    }
+
+    function releaseBanners(): void {
+        if (hungBanners === null) return;
+        hungBanners = null;
+        try { dependencies.world?.setGreatHallBanners?.("game"); }
+        catch (error) { logger.warn(`[hmp-houses] could not release the Great Hall banners: ${messageOf(error)}`); }
+    }
+
+    async function listCommonRooms(target: Player | number): Promise<HmpHouseId[]> {
+        await start();
+        return grantedRooms(await core.metadata.getCharacter(characterId(target), COMMON_ROOMS_KEY));
+    }
+
+    function inCommonRoomGroups(groups: HmpCoreGroup[]): boolean {
+        const grades = new Map(groups.map((group) => [group.key.toLowerCase(), Number(group.grade) || 0]));
+        return config.commonRoomGroups.some((required) => (grades.get(required.key) ?? Number.NEGATIVE_INFINITY) >= required.minimumGrade);
+    }
+
+    async function syncCommonRooms(player: Player): Promise<HmpHouseId[] | null> {
+        await start();
+        const character = activeCharacter(player);
+        const granted = grantedRooms(await core.metadata.getCharacter(character.id, COMMON_ROOMS_KEY));
+        const access = config.commonRoomGroups.length && granted.length < HOUSES.length && inCommonRoomGroups(await core.groups.effective(player)) ? [...HOUSES] : granted;
+        if (!Array.isArray(player.commonRooms)) {
+            if (access.length && !warnedCommonRooms) {
+                warnedCommonRooms = true;
+                logger.warn("[hmp-houses] common-room access needs a HogwartsMP host with player.commonRooms; players enter only their own house's");
+            }
+            return null;
+        }
+        player.commonRooms = access.map((house) => nativeHouse(house));
+        if (access.length) commonRoomPlayers.set(playerId(player), player);
+        else commonRoomPlayers.delete(playerId(player));
+        return access;
+    }
+
+    async function writeCommonRooms(target: Player | number, rooms: HmpHouseId[]): Promise<void> {
+        const id = characterId(target);
+        await core.metadata.setCharacter(id, COMMON_ROOMS_KEY, rooms);
+        const player = typeof target === "number" ? onlinePlayer(id) : target;
+        if (player) await syncCommonRooms(player);
+    }
+
+    async function grantCommonRoom(target: Player | number, rawHouse: HmpHouseId): Promise<boolean> {
+        const house = normalizeHouse(rawHouse);
+        const rooms = await listCommonRooms(target);
+        if (rooms.includes(house)) return false;
+        await writeCommonRooms(target, HOUSES.filter((entry) => entry === house || rooms.includes(entry)));
+        return true;
+    }
+
+    async function revokeCommonRoom(target: Player | number, rawHouse: HmpHouseId): Promise<boolean> {
+        const house = normalizeHouse(rawHouse);
+        const rooms = await listCommonRooms(target);
+        if (!rooms.includes(house)) return false;
+        await writeCommonRooms(target, rooms.filter((entry) => entry !== house));
+        return true;
+    }
+
+    async function clearCommonRooms(target: Player | number): Promise<number> {
+        const rooms = await listCommonRooms(target);
+        if (rooms.length) await writeCommonRooms(target, []);
+        return rooms.length;
+    }
+
+    async function groupsChanged(change: unknown): Promise<void> {
+        if (!config.commonRoomGroups.length || state === "stopped") return;
+        const value = change && typeof change === "object" ? change as { key?: unknown; group?: { key?: unknown } } : {};
+        const key = String(value.group?.key ?? value.key ?? "").toLowerCase();
+        if (key && !config.commonRoomGroups.some((group) => group.key === key)) return;
+        await Promise.all(core.sessions.all().filter((session) => session.character && session.player).map(async (session) => {
+            try { await syncCommonRooms(session.player); }
+            catch (error) { logger.warn(`[hmp-houses] could not refresh common rooms for #${session.player.id}: ${messageOf(error)}`); }
+        }));
     }
 
     async function characterLoaded(player: Player): Promise<void> {
         try { await sync(player); }
         catch (error) { logger.warn(`[hmp-houses] could not synchronize #${player.id}: ${messageOf(error)}`); }
+        try { await syncCommonRooms(player); }
+        catch (error) { logger.warn(`[hmp-houses] could not apply common rooms for #${player.id}: ${messageOf(error)}`); }
     }
 
     function disconnect(player: Player): boolean {
         syncedPlayers.delete(Number(player.id));
+        commonRoomPlayers.delete(Number(player.id));
         return true;
     }
 
     async function stop(): Promise<void> {
         state = "stopped";
         syncedPlayers.clear();
+        for (const player of commonRoomPlayers.values()) {
+            try { player.commonRooms = []; }
+            catch (error) { logger.warn(`[hmp-houses] could not take common rooms back from #${player.id}: ${messageOf(error)}`); }
+        }
+        commonRoomPlayers.clear();
+        releaseBanners();
     }
 
     return Object.freeze({
@@ -223,9 +357,12 @@ function createHousesService(dependencies: HousesDependencies): HousesService {
             pending: async (rawLimit = 50) => { await start(); const rows = await repository.pendingPoints(limit(rawLimit)); pendingTransactions = rows.length; return rows; },
             recover,
         }),
+        commonRooms: Object.freeze({
+            list: listCommonRooms, grant: grantCommonRoom, revoke: revokeCommonRoom, clear: clearCommonRooms, sync: syncCommonRooms,
+        }),
         status: () => ({ state, lastError, syncedPlayers: syncedPlayers.size, pendingTransactions, uptimeMs: Math.max(0, now() - startedAt) }),
-        start, characterLoaded, disconnect, stop,
+        start, characterLoaded, groupsChanged, disconnect, stop,
     });
 }
 
-export = { createHousesService };
+export = { createHousesService, leader, COMMON_ROOMS_KEY };

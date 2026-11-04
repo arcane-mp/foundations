@@ -72,6 +72,48 @@ await Houses.points.pending(50);
 `allowNegativePoints` controls whether deductions may take a house below zero. JavaScript safe-integer
 limits are enforced even though MySQL can store larger values.
 
+## Common rooms
+
+A character may enter other houses' common rooms besides their own, for staff or guests. The entrance
+opens for them as it would for a member of that house, with the game's own animation; their house, robes
+and respawn stay as they are. Grants belong to the character, are kept in its `hmp-core` metadata, and are
+applied whenever the character loads:
+
+```ts
+await Houses.commonRooms.grant(player, "slytherin");   // or a character id
+await Houses.commonRooms.revoke(player, "slytherin");
+await Houses.commonRooms.list(player);                 // ["ravenclaw"]
+await Houses.commonRooms.clear(player);
+```
+
+`commonRoomGroups` gives members of any listed `hmp-core` group every common room:
+
+```json
+{ "commonRoomGroups": [{ "key": "staff", "minimumGrade": 1 }] }
+```
+
+It is empty by default, so nobody enters another house's common room. A change to one of those groups
+reaches online players at once. An entrance decides as someone walks up to it, so a player already in the
+doorway sees a change the next time they step up. Other players still see that entrance closed. Unloading
+the character or stopping `hmp-houses` takes the access back.
+
+Common-room access needs HogwartsMP `1.11` or newer for `player.commonRooms`. On an older host grants are
+still kept, but nobody gets in, and `hmp-houses` logs a warning the first time someone would have.
+
+## Great Hall banners
+
+`greatHallBanners` hangs one house's banners at the head of the Great Hall for every player:
+
+- `"game"`, the default, leaves the banners to the game;
+- `"none"` takes them down;
+- a house, such as `"ravenclaw"`, hangs that house's;
+- `"leader"` hangs the House Cup leader's when `hmp-houses` starts and again whenever points change. A tie
+  at the top, which includes no house having any points yet, keeps the banners already hanging.
+
+A change unfurls the new house's banners in place. Stopping `hmp-houses` hands the banners back to the
+game. The banners need HogwartsMP `1.11` or newer for `World.setGreatHallBanners`; on an older host the
+setting does nothing and `hmp-houses` logs a warning at startup.
+
 ## Events
 
 - `hmp:houses:changed` follows a successful membership transition and includes the online player when
@@ -84,6 +126,7 @@ limits are enforced even though MySQL can store larger values.
 
 - `membership.get/set/clear/members/history/sync`
 - `points.get/standings/adjust/award/deduct/transaction/history/pending/recover`
+- `commonRooms.list/grant/revoke/clear/sync`
 - `status`
 
 ## Closed-testing commands

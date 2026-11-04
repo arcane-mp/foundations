@@ -9,6 +9,7 @@ import type {
     HmpHousePointTransaction,
     HmpHouseStanding,
     HmpHouses,
+    HmpNativeHouse,
 } from "../types";
 
 export type Player = HogwartsMpPlayer & HmpHousePlayer;
@@ -23,6 +24,15 @@ export interface HouseConfig {
     adminGroups: Array<{ key: string; minimumGrade: number }>;
     groupPrefix: string;
     allowNegativePoints: boolean;
+    /** Members of any of these groups may enter every house's common room. */
+    commonRoomGroups: Array<{ key: string; minimumGrade: number }>;
+    /** "game" leaves the Great Hall's banners alone; "leader" hangs the House Cup leader's. */
+    greatHallBanners: HmpHouseId | "none" | "game" | "leader";
+}
+
+/** The host's Great Hall banners; absent on a host older than World.setGreatHallBanners. */
+export interface NativeWorldBanners {
+    setGreatHallBanners?(banners: Exclude<HmpNativeHouse, "Unaffiliated"> | "none" | "game"): boolean;
 }
 
 export interface MembershipMutation {
@@ -67,12 +77,16 @@ export interface HousesDependencies {
     logger: Logger;
     config: HouseConfig;
     migrations: HmpMySQLMigration[];
+    /** Absent where the host has no server `World` builtin. */
+    world?: NativeWorldBanners;
     now?: () => number;
 }
 
 export interface HousesService extends HmpHouses<Player> {
     start(): Promise<void>;
     characterLoaded(player: Player): Promise<void>;
+    /** An `hmp:groups:changed` payload; only a change to a `commonRoomGroups` key re-syncs anyone. */
+    groupsChanged(change: unknown): Promise<void>;
     disconnect(player: Player): boolean;
     stop(): Promise<void>;
 }

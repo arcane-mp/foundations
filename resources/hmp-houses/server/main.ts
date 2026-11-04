@@ -3,7 +3,9 @@ import repositoryModule = require("./repository");
 import schemaModule = require("./schema");
 import serviceModule = require("./service");
 import normalizeModule = require("../shared/normalize");
-import type { Player } from "./internal";
+import type { NativeWorldBanners, Player } from "./internal";
+
+declare const World: NativeWorldBanners | undefined;
 
 const { loadConfig } = configModule;
 const { createRepository } = repositoryModule;
@@ -18,10 +20,11 @@ const core = Imports.get("hmp-core");
 const logger = Hmp.logger.create("hmp-houses");
 const config = loadConfig(Hmp);
 const repository = createRepository(database);
-const houses = createHousesService({ repository, core, events: Events, logger, config, migrations });
+const houses = createHousesService({ repository, core, events: Events, logger, config, migrations, world: typeof World === "undefined" ? undefined : World });
 
 Exports.register("membership", houses.membership);
 Exports.register("points", houses.points);
+Exports.register("commonRooms", houses.commonRooms);
 Exports.register("status", houses.status);
 
 function loadedPlayer(payload: unknown): Player | null {
@@ -34,10 +37,14 @@ Events.on("hmp:character:loaded", (payload: unknown) => { const player = loadedP
 Events.on("hmp:character:unloaded", (payload: unknown) => {
     const player = loadedPlayer(payload);
     if (!player) return;
-    try { player.house = "Unaffiliated"; }
+    try {
+        player.house = "Unaffiliated";
+        if (Array.isArray(player.commonRooms)) player.commonRooms = [];
+    }
     catch (error) { logger.debug(`Skipped native house reset for #${player.id}: ${messageOf(error)}`); }
     houses.disconnect(player);
 });
+Events.on("hmp:groups:changed", (change: unknown) => houses.groupsChanged(change).catch((error) => logger.warn(`Could not refresh common rooms: ${messageOf(error)}`)));
 Events.on("playerDisconnect", (player: Player) => houses.disconnect(player));
 Events.on("resourceStop", (name?: string) => {
     if (!name || name === "hmp-houses") houses.stop().catch((error) => logger.error(`Shutdown failed: ${messageOf(error)}`));

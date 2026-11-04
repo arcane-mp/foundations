@@ -304,6 +304,8 @@ declare global {
         position: HogwartsMpVector3;
         virtualWorld?: number;
         house?: "Gryffindor" | "Hufflepuff" | "Ravenclaw" | "Slytherin" | "Unaffiliated";
+        /** Other houses' common rooms this player may enter besides their own; assign [] to take it away. Throws once disconnected. */
+        commonRooms?: Array<"Gryffindor" | "Hufflepuff" | "Ravenclaw" | "Slytherin">;
         steamId?: string;
         discordId?: string;
         hardwareId?: string;

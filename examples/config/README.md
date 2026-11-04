@@ -36,7 +36,8 @@ needs HogwartsMP `1.10` or newer for `Spells.define`; an older host skips it wit
 `FirestormLesson`, grants it once completed (`/spells teach me FirestormLesson`) and needs HogwartsMP
 `1.10` or newer for `SpellLearning.define`; on an older host it fails as unsupported and grants nothing.
 `hmp-progression` includes XP/talent bounds, reconciliation timeouts, and closed-test admin permissions.
-`hmp-houses` includes group projection, point-balance policy, and closed-testing command permissions.
+`hmp-houses` includes group projection, point-balance policy, closed-testing command permissions, no
+common-room groups, and the game's own Great Hall banners (`"leader"` hangs the House Cup leader's).
 `hmp-activities` includes bounded lobby settings and an opt-in dungeon-party-shaped test definition.
 `hmp-pvp` includes the server-wide default decision, lethal-mode default, staff groups, and join-sync delay;
 keep the fallback `deny` and lethal mode off unless the server intentionally runs open-world mortal PvP.

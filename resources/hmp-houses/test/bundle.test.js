@@ -3,7 +3,9 @@ const path = require("node:path");
 
 const exportsMap = new Map();
 const handlers = new Map();
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
+const warnings = [];
+const logger = { info() {}, warn(message) { warnings.push(String(message)); }, error() {}, debug() {} };
+let configFile = {};
 const player = { id: 1, nickname: "Smoke", house: "Unaffiliated", sendChat() {} };
 const database = {
     transaction: async (work) => typeof work === "function" ? work(database) : [],
@@ -20,7 +22,7 @@ global.Exports = { register: (name, value) => exportsMap.set(name, value) };
 global.Imports = { get: (name) => {
     if (name === "hmp-lib") return {
         logger: { create: () => logger },
-        config: { load: (_path, options) => options.defaults, env: { boolean: (_value, fallback) => fallback } },
+        config: { load: (_path, options) => ({ ...options.defaults, ...configFile }), env: { boolean: (_value, fallback) => fallback } },
         player: { find: () => player },
     };
     if (name === "hmp-mysql") return database;
@@ -31,8 +33,10 @@ global.Events = {
     on: (name, handler) => handlers.set(name, handler),
     emit() {},
 };
-require(path.resolve(__dirname, "..", "dist", "server.js"));
-assert.deepStrictEqual([...exportsMap.keys()], ["membership", "points", "status"]);
+const serverBundle = path.resolve(__dirname, "..", "dist", "server.js");
+require(serverBundle);
+assert.deepStrictEqual([...exportsMap.keys()], ["membership", "points", "commonRooms", "status"]);
+assert.ok(handlers.has("hmp:groups:changed"));
 assert.ok(handlers.has("hmp:character:loaded"));
 assert.ok(handlers.has("hmp:character:unloaded"));
 assert.ok(handlers.has("playerDisconnect"));
@@ -43,4 +47,34 @@ Object.defineProperty(disconnectedPlayer, "house", {
     set() { throw new Error("Player is not connected"); },
 });
 assert.doesNotThrow(() => handlers.get("hmp:character:unloaded")({ session: { player: disconnectedPlayer } }));
-console.log("hmp-houses bundle contract passed");
+
+// Unloading a character takes its common rooms back along with its house.
+const leaving = { id: 3, nickname: "Leaving", house: "Gryffindor", commonRooms: ["Slytherin"] };
+handlers.get("hmp:character:unloaded")({ session: { player: leaving } });
+assert.strictEqual(leaving.house, "Unaffiliated");
+assert.deepStrictEqual(leaving.commonRooms, []);
+
+void (async () => {
+    await handlers.get("resourceStart")("hmp-houses");
+    assert.deepStrictEqual(warnings, [], "the game's own banners need no host support");
+
+    // Pinned banners hang once the ledger is ready, and "game" comes back at stop.
+    const hung = [];
+    configFile = { greatHallBanners: "Hufflepuff" };
+    global.World = { setGreatHallBanners: (banners) => { hung.push(banners); return true; } };
+    delete require.cache[serverBundle];
+    require(serverBundle);
+    await handlers.get("resourceStart")("hmp-houses");
+    assert.deepStrictEqual(hung, ["Hufflepuff"]);
+    handlers.get("resourceStop")("hmp-houses");
+    assert.deepStrictEqual(hung, ["Hufflepuff", "game"]);
+
+    // An older host has no World.setGreatHallBanners and only warns.
+    delete global.World;
+    delete require.cache[serverBundle];
+    require(serverBundle);
+    await handlers.get("resourceStart")("hmp-houses");
+    assert.strictEqual(warnings.length, 1);
+    assert.match(warnings[0], /World.setGreatHallBanners/);
+    console.log("hmp-houses bundle contract passed");
+})().catch((error) => { console.error(error); process.exitCode = 1; });

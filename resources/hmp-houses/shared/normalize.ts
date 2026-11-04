@@ -2,7 +2,7 @@ import type { HmpHouseId, HmpNativeHouse } from "../types";
 
 const HOUSES = Object.freeze(["gryffindor", "hufflepuff", "ravenclaw", "slytherin"] as const);
 const HOUSE_SET = new Set<string>(HOUSES);
-const NATIVE: Record<HmpHouseId, HmpNativeHouse> = Object.freeze({
+const NATIVE: Record<HmpHouseId, Exclude<HmpNativeHouse, "Unaffiliated">> = Object.freeze({
     gryffindor: "Gryffindor",
     hufflepuff: "Hufflepuff",
     ravenclaw: "Ravenclaw",
@@ -15,6 +15,8 @@ function house(value: unknown): HmpHouseId {
     return normalized as HmpHouseId;
 }
 
+function nativeHouse(value: HmpHouseId): Exclude<HmpNativeHouse, "Unaffiliated">;
+function nativeHouse(value: HmpHouseId | null): HmpNativeHouse;
 function nativeHouse(value: HmpHouseId | null): HmpNativeHouse {
     return value ? NATIVE[value] : "Unaffiliated";
 }
