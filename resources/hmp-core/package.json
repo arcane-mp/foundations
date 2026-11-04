@@ -33,7 +33,8 @@
       "sessions",
       "characters",
       "groups",
-      "metadata"
+      "metadata",
+      "tickets"
     ],
     "resourceDependencies": [
       { "name": "hmp-mysql", "version": "0.10.0" },

@@ -498,7 +498,23 @@ declare global {
         readonly target: string | null;
     }
 
+    /** A player asking to join, handed to `playerConnecting`; every field but `ticket` is client-reported. */
+    interface HogwartsMpPendingConnection {
+        readonly nickname: string;
+        readonly steamId: string;
+        readonly epicId: string;
+        readonly discordId: string;
+        readonly hardwareId: string;
+        /** The `ticket` of the `hogwartsmp://` link the client was launched with, or `""`. Empty on every join before HogwartsMP 1.11. */
+        readonly ticket: string;
+        readonly ip: string;
+        /** Turns the player away before they take a slot. */
+        reject(reason?: string): void;
+    }
+
     interface HogwartsMpEvents {
+        /** A join, before the player takes a slot; a handler may return a Promise. */
+        on(eventName: "playerConnecting", listener: (connection: HogwartsMpPendingConnection) => unknown): void;
         on(eventName: "chatCommand", listener: (player: HogwartsMpPlayer, message: string, command: string, args: string[]) => unknown): void;
         /** Client: the local player placed, moved or removed their map waypoint. */
         on(eventName: "waypointChanged", listener: (waypoint: HogwartsMpWaypoint | null, previous: HogwartsMpWaypoint | null) => unknown): void;
@@ -705,6 +721,10 @@ declare global {
     };
     const Exports: {
         register<T>(name: string, value: T): void;
+    };
+    const ExecutionEnvironment: {
+        /** The HogwartsMP release, such as `"1.10.0"`. */
+        readonly modVersion: string;
     };
     const Imports: {
         get(name: "hmp-lib"): import("../resources/hmp-lib/types").HmpLibServer<HogwartsMpPlayer>;

@@ -113,6 +113,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   `hmp-blips`'s own rules, which go when `hmp-blips` stops; script markers are never touched. It defaults
   to nothing hidden or retitled. It needs HogwartsMP `1.11` or newer for `MapIcons`; an older host
   ignores it.
+- `hmp-core` join tickets: the `tickets` export lets a resource register a redeemer that checks the
+  `ticket` of the `hogwartsmp://` link a player joined with, such as one a website's Join button issued,
+  before the player takes a slot, and `tickets.get(player)` returns what it accepted. A ticket the same
+  join presents twice (a mod-sync restart, Try again) is accepted again for `tickets.repeatSeconds`.
+  `tickets.required: true` turns away a join no redeemer accepted with `tickets.rejectMessage`; it
+  defaults to `false`, so joins from the server list still work. It needs HogwartsMP `1.11` or newer for
+  link tickets in `playerConnecting`; an older host ignores it.
 
 ### Fixed
 

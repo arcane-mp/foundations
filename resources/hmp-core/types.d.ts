@@ -115,6 +115,56 @@ export interface HmpCoreMetadataApi {
     deleteCharacter(characterId: number, key: string): Promise<boolean>;
 }
 
+/** A join a ticket redeemer is asked about, before the player takes a slot. Only `ticket` is not client-reported. */
+export interface HmpCoreTicketConnection {
+    /** The `ticket` of the `hogwartsmp://` link the player joined with; never empty when a redeemer is asked. */
+    readonly ticket: string;
+    readonly nickname: string;
+    readonly steamId: string;
+    readonly epicId: string;
+    readonly discordId: string;
+    readonly hardwareId: string;
+    readonly ip: string;
+}
+
+export interface HmpCoreTicketRedeemer {
+    name: string;
+    /** Resource name, used to unregister the redeemer when that resource stops. */
+    resource: string;
+    /** Higher priorities are asked first. */
+    priority?: number;
+    /**
+     * Any truthy value accepts the ticket and is kept as `HmpCoreTicket.result`, such as the account your site
+     * issued it for; a falsy one, or a throw, leaves it to the next redeemer.
+     */
+    redeem(connection: HmpCoreTicketConnection): unknown;
+}
+
+export interface HmpCoreTicketRedeemerInfo {
+    name: string;
+    resource: string;
+    priority: number;
+}
+
+/** A ticket a redeemer accepted for a player's join. */
+export interface HmpCoreTicket {
+    redeemer: string;
+    /** What the redeemer returned. */
+    result: unknown;
+    /** True when the same join presented it again within `tickets.repeatSeconds` and the redeemers were not asked. */
+    repeat: boolean;
+}
+
+export interface HmpCoreTicketsApi<P extends HmpCorePlayer = HmpCorePlayer> {
+    register(redeemer: HmpCoreTicketRedeemer): () => boolean;
+    unregister(name: string): boolean;
+    list(): HmpCoreTicketRedeemerInfo[];
+    /** The ticket this player's join was accepted with, from `playerConnect` until they leave; null when none was. */
+    get(player: P | number): HmpCoreTicket | null;
+    /** Whether joins without an accepted ticket are turned away: `tickets.required` on a host that passes tickets on. */
+    required(): boolean;
+}
+
 export interface HmpCoreStatus {
     state: "starting" | "ready" | "degraded" | "stopped";
     lastError: string;
@@ -131,4 +181,5 @@ export interface HmpCore<P extends HmpCorePlayer = HmpCorePlayer> {
     characters: HmpCoreCharactersApi<P>;
     groups: HmpCoreGroupsApi<P>;
     metadata: HmpCoreMetadataApi;
+    tickets: HmpCoreTicketsApi<P>;
 }

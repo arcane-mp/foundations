@@ -62,6 +62,8 @@ Review at minimum:
 - every spawn coordinate against the supported game build, and whether players should load and respawn
   at an `hmp-spawn` spawn point (`worldSpawn`, `respawnAtSpawn`);
 - whether deleting characters is appropriate for the test;
+- whether every join must come through a website link whose ticket a resource accepts (`hmp-core`
+  `tickets.required`, off by default);
 - custom item names, weights, stack sizes, and resource-hosted icon URLs;
 - the inventory UI URL if the server replaces the bundled Arcanum renderer;
 - the physical-door default, group exceptions, and whether closed-test door commands remain enabled;

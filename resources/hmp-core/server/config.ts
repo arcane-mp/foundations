@@ -12,6 +12,7 @@ function loadConfig(Hmp: HmpLibServer<Player>, options: { env?: NodeJS.ProcessEn
         duplicateSessionMinimumGrade: 1,
         kickDuplicateSession: false,
         identityOrder: ["steamId", "discordId", "hardwareId"],
+        tickets: { required: false, rejectMessage: "Join this server from its website.", repeatSeconds: 120 },
     };
     const config = Hmp.config.load<CoreConfig>(env.HMP_CORE_CONFIG || "data/hmp-core.json", { cwd, defaults });
     if (env.HMP_CORE_MAX_CHARACTERS) {
@@ -25,11 +26,19 @@ function loadConfig(Hmp: HmpLibServer<Player>, options: { env?: NodeJS.ProcessEn
     }
     if (env.HMP_CORE_KICK_DUPLICATE) config.kickDuplicateSession = Hmp.config.env.boolean(env.HMP_CORE_KICK_DUPLICATE);
     if (env.HMP_CORE_IDENTITY_ORDER) config.identityOrder = env.HMP_CORE_IDENTITY_ORDER.split(",").map((value) => value.trim()).filter(Boolean);
+    const tickets = config.tickets && typeof config.tickets === "object" && !Array.isArray(config.tickets) ? config.tickets : defaults.tickets;
+    config.tickets = {
+        required: env.HMP_CORE_REQUIRE_TICKET === undefined ? tickets.required === true : Hmp.config.env.boolean(env.HMP_CORE_REQUIRE_TICKET, false),
+        rejectMessage: String(tickets.rejectMessage ?? defaults.tickets.rejectMessage).trim(),
+        repeatSeconds: Number(tickets.repeatSeconds ?? defaults.tickets.repeatSeconds),
+    };
     config.duplicateSessionGroup = String(config.duplicateSessionGroup || "").trim().toLowerCase();
     if (!Array.isArray(config.identityOrder) || !config.identityOrder.length) throw new TypeError("hmp-core identityOrder must not be empty");
     if (!["reject-new", "replace-old", "allow-group"].includes(config.duplicateSession)) throw new TypeError("hmp-core duplicateSession must be reject-new, replace-old or allow-group");
     if (!/^[a-z0-9][a-z0-9_.:-]{0,63}$/.test(config.duplicateSessionGroup)) throw new TypeError("hmp-core duplicateSessionGroup must be a valid group key");
     if (!Number.isSafeInteger(config.duplicateSessionMinimumGrade) || config.duplicateSessionMinimumGrade < 0) throw new TypeError("hmp-core duplicateSessionMinimumGrade must be a non-negative integer");
+    if (!config.tickets.rejectMessage || Buffer.byteLength(config.tickets.rejectMessage) > 512) throw new TypeError("hmp-core tickets.rejectMessage must be 1-512 bytes");
+    if (!Number.isFinite(config.tickets.repeatSeconds) || config.tickets.repeatSeconds < 0 || config.tickets.repeatSeconds > 3600) throw new RangeError("hmp-core tickets.repeatSeconds must be between 0 and 3600");
     return config;
 }
 

@@ -43,6 +43,44 @@ After validating ownership, `Core.accounts.linkIdentity(accountId, principal)` l
 principal to the existing internal account. An identity already owned by another account is rejected,
 never silently transferred.
 
+## Join tickets
+
+A `hogwartsmp://host:port?ticket=…` link, such as a Join button on your website, starts the game and
+joins with that `ticket`. Every other identifier is whatever the client reports, but a client cannot make
+up a ticket your site issued and checks. `hmp-core` asks the resources that register a ticket redeemer
+about it before the player takes a slot:
+
+```js
+Core.tickets.register({
+    name: "website",
+    resource: "my-site",
+    async redeem({ ticket, hardwareId }) {
+        return site.redeem(ticket, hardwareId); // e.g. { accountId } when it is good, else null
+    },
+});
+```
+
+Redeemers are asked from the highest `priority` down; the first truthy result accepts the ticket, and a
+throw counts as a refusal. `Core.tickets.get(player)` then returns `{ redeemer, result, repeat }` from
+`playerConnect` until the player leaves, so an identity provider registered at a higher priority can turn
+the result into a verified principal. It is matched to the player by nickname, hardware ID and address,
+and is null when no ticket was accepted.
+
+- **One join can present a ticket twice**: when the game restarts to apply the server's mods, and on the
+  join dialog's Try again. A ticket accepted once is accepted again from the same hardware ID and
+  address for `tickets.repeatSeconds` (120 by default) without asking the redeemers, so they can spend it
+  on first use.
+- **A join from the server list carries none**: its ticket is an empty string, and no redeemer is asked.
+- **It is not encrypted on the wire**, so keep tickets short-lived and single-use. `hmp-core` never logs
+  one.
+
+With `tickets.required: true`, a join no redeemer accepted is turned away with `tickets.rejectMessage`
+before it takes a slot. It is off by default, so tickets are only read.
+
+Join tickets need HogwartsMP `1.11` or newer, whose clients pass their link's ticket on. On an older host
+every ticket is empty, so redeemers are never asked, and `tickets.required` is ignored with a warning
+rather than turning everyone away.
+
 ## Exports
 
 - `status()` reports startup state and session/provider counts.
@@ -52,6 +90,7 @@ never silently transferred.
 - `characters` lists, creates, selects, unloads and soft-deletes character records.
 - `groups` manages account/character roles and calculates effective membership.
 - `metadata` stores JSON values at account or character scope.
+- `tickets` registers join ticket redeemers and reads the ticket a player joined with.
 
 All mutating APIs return promises. See `types.d.ts` for the full contract.
 
@@ -71,7 +110,12 @@ Create `data/hmp-core.json` in the server working directory when overrides are n
   "duplicateSessionGroup": "admin",
   "duplicateSessionMinimumGrade": 1,
   "kickDuplicateSession": false,
-  "identityOrder": ["steamId", "discordId", "hardwareId"]
+  "identityOrder": ["steamId", "discordId", "hardwareId"],
+  "tickets": {
+    "required": false,
+    "rejectMessage": "Join this server from its website.",
+    "repeatSeconds": 120
+  }
 }
 ```
 
@@ -81,7 +125,8 @@ characters independently, and one character cannot be active in two sessions at 
 
 `HMP_CORE_CONFIG`, `HMP_CORE_MAX_CHARACTERS`, `HMP_CORE_AUTO_SELECT_SINGLE`,
 `HMP_CORE_DUPLICATE_SESSION`, `HMP_CORE_DUPLICATE_GROUP`, `HMP_CORE_DUPLICATE_MIN_GRADE`,
-`HMP_CORE_KICK_DUPLICATE` and `HMP_CORE_IDENTITY_ORDER` provide environment overrides.
+`HMP_CORE_KICK_DUPLICATE`, `HMP_CORE_IDENTITY_ORDER` and `HMP_CORE_REQUIRE_TICKET` provide environment
+overrides.
 
 ## Lifecycle events
 

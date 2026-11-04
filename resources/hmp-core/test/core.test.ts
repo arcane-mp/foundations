@@ -3,12 +3,16 @@ import { test } from "node:test";
 import coreModule = require("../server/core");
 import repositoryModule = require("../server/repository");
 import schemaModule = require("../server/schema");
+import configModule = require("../server/config");
+import ticketsModule = require("../server/tickets");
 import type { HmpCoreAccount, HmpCoreCharacter, HmpCoreGroup, HmpCorePrincipal } from "../types";
 import type { HmpMySQLMigration } from "../../hmp-mysql/types";
 import type { CoreConfig, Database, Player, Repository, Scope } from "../server/internal";
 
 const { createCore } = coreModule;
 const { createRepository } = repositoryModule;
+const { loadConfig } = configModule;
+const { createTickets, hostAtLeast } = ticketsModule;
 const { migrations } = schemaModule;
 
 interface TestPlayer extends Player { mafiahubId?: string }
@@ -335,5 +339,140 @@ test("repository refuses to transfer an existing identity", async () => {
         (error) => hasCode(error, "HMP_CORE_IDENTITY_CONFLICT"),
     );
     assert.strictEqual(calls.length, 0);
+});
+
+function joining(ticket: string, ids: Partial<HogwartsMpPendingConnection> = {}) {
+    const rejected: string[] = [];
+    const connection: HogwartsMpPendingConnection = {
+        nickname: "Sebastian",
+        steamId: "",
+        epicId: "",
+        discordId: "",
+        hardwareId: "42",
+        ip: "203.0.113.5",
+        ticket,
+        ...ids,
+        reject: (reason?: string) => { rejected.push(String(reason)); },
+    };
+    return { connection, rejected };
+}
+
+function ticketSetup(config: Partial<{ required: boolean; rejectMessage: string; repeatSeconds: number }> = {}, supported = true) {
+    let clock = 1_000;
+    const warnings: string[] = [];
+    const tickets = createTickets({
+        config: { required: false, rejectMessage: "Join from the website.", repeatSeconds: 120, ...config },
+        supported,
+        logger: { warn: (message: string) => warnings.push(message) },
+        now: () => clock,
+    });
+    return { tickets, warnings, advance: (ms: number) => { clock += ms; } };
+}
+
+test("reads the host release for link tickets", () => {
+    assert.strictEqual(hostAtLeast("1.11.0", 1, 11), true);
+    assert.strictEqual(hostAtLeast("2.0.0", 1, 11), true);
+    assert.strictEqual(hostAtLeast("1.10.3", 1, 11), false);
+    assert.strictEqual(hostAtLeast("", 1, 11), false);
+    assert.strictEqual(hostAtLeast(undefined, 1, 11), false);
+});
+
+test("loads the ticket settings off by default and refuses bad ones", () => {
+    let overrides: Record<string, unknown> = {};
+    const Hmp = {
+        config: {
+            load: (_path: string, options: { defaults: Record<string, unknown> }) => ({ ...options.defaults, ...overrides }),
+            env: { number: Number, boolean: (value: unknown, fallback?: boolean) => value === undefined ? Boolean(fallback) : value === "true" },
+        },
+    } as unknown as Parameters<typeof loadConfig>[0];
+    assert.deepStrictEqual(loadConfig(Hmp, { env: {} }).tickets, { required: false, rejectMessage: "Join this server from its website.", repeatSeconds: 120 });
+    assert.strictEqual(loadConfig(Hmp, { env: { HMP_CORE_REQUIRE_TICKET: "true" } }).tickets.required, true);
+    overrides = { tickets: { required: true, rejectMessage: "Use the Join button.", repeatSeconds: 30 } };
+    assert.deepStrictEqual(loadConfig(Hmp, { env: {} }).tickets, { required: true, rejectMessage: "Use the Join button.", repeatSeconds: 30 });
+    overrides = { tickets: { repeatSeconds: -1 } };
+    assert.throws(() => loadConfig(Hmp, { env: {} }), /repeatSeconds/);
+    overrides = { tickets: { rejectMessage: " " } };
+    assert.throws(() => loadConfig(Hmp, { env: {} }), /rejectMessage/);
+});
+
+test("asks redeemers about a link's ticket and hands the accepted one to the joining player", async () => {
+    const { tickets, warnings } = ticketSetup();
+    const asked: string[] = [];
+    tickets.api.register({ name: "broken", resource: "site", priority: 10, redeem: () => { asked.push("broken"); throw new Error("site down"); } });
+    tickets.api.register({ name: "other", resource: "site", priority: 5, redeem: () => { asked.push("other"); return null; } });
+    const unregister = tickets.api.register({
+        name: "website",
+        resource: "site",
+        redeem: async ({ ticket, hardwareId }) => { asked.push("website"); return ticket === "abc" && { accountId: 7, hardwareId }; },
+    });
+    assert.throws(() => tickets.api.register({ name: "website", resource: "site", redeem: () => true }), /already registered/);
+    assert.deepStrictEqual(tickets.api.list().map((entry) => entry.name), ["broken", "other", "website"]);
+
+    const { connection, rejected } = joining("abc");
+    assert.deepStrictEqual(await tickets.connecting(connection), { redeemer: "website", result: { accountId: 7, hardwareId: "42" }, repeat: false });
+    assert.deepStrictEqual(asked, ["broken", "other", "website"]);
+    assert.deepStrictEqual(rejected, []);
+    assert.match(warnings[0], /broken failed for Sebastian: site down/);
+    assert.ok(!warnings[0].includes("abc"), "a ticket is never logged");
+
+    const sebastian = player(3, "Sebastian", { hardwareId: "42", getIP: () => "203.0.113.5" });
+    const stranger = player(4, "Ominis", { hardwareId: "43", ip: "203.0.113.6" });
+    assert.strictEqual(tickets.attach(stranger), null);
+    assert.deepStrictEqual(tickets.attach(sebastian), { redeemer: "website", result: { accountId: 7, hardwareId: "42" }, repeat: false });
+    assert.deepStrictEqual(tickets.api.get(3)?.result, { accountId: 7, hardwareId: "42" });
+    assert.strictEqual(tickets.api.get(stranger), null);
+    assert.strictEqual(tickets.detach(sebastian), true);
+    assert.strictEqual(tickets.api.get(sebastian), null);
+
+    // Joined from the server list: no ticket, and nobody is asked.
+    asked.length = 0;
+    assert.strictEqual(await tickets.connecting(joining("").connection), null);
+    assert.deepStrictEqual(asked, []);
+    assert.strictEqual(unregister(), true);
+    assert.strictEqual(tickets.removeForResource("site"), 2);
+    assert.deepStrictEqual(tickets.api.list(), []);
+});
+
+test("accepts the same join's second presentation of a ticket without asking again", async () => {
+    const { tickets, advance } = ticketSetup({ required: true, repeatSeconds: 60 });
+    let redeemed = 0;
+    tickets.api.register({ name: "website", resource: "site", redeem: () => ++redeemed === 1 });
+    assert.strictEqual((await tickets.connecting(joining("once").connection))?.repeat, false);
+    advance(30_000);
+    const again = joining("once");
+    assert.deepStrictEqual(await tickets.connecting(again.connection), { redeemer: "website", result: true, repeat: true });
+    assert.deepStrictEqual(again.rejected, []);
+    assert.strictEqual(redeemed, 1);
+    const elsewhere = joining("once", { hardwareId: "99" });
+    assert.strictEqual(await tickets.connecting(elsewhere.connection), null, "another machine is asked, and the spent ticket fails");
+    assert.deepStrictEqual(elsewhere.rejected, ["Join from the website."]);
+    advance(31_000);
+    const late = joining("once");
+    assert.strictEqual(await tickets.connecting(late.connection), null);
+    assert.deepStrictEqual(late.rejected, ["Join from the website."]);
+});
+
+test("turns away a join without an accepted ticket only when required on a host that passes tickets on", async () => {
+    const required = ticketSetup({ required: true });
+    assert.strictEqual(required.tickets.api.required(), true);
+    for (const ticket of ["", "made-up"]) {
+        const { connection, rejected } = joining(ticket);
+        assert.strictEqual(await required.tickets.connecting(connection), null);
+        assert.deepStrictEqual(rejected, ["Join from the website."]);
+    }
+    assert.strictEqual(required.warnings.filter((message) => /no resource registered a ticket redeemer/.test(message)).length, 1);
+
+    const optional = ticketSetup();
+    const allowed = joining("");
+    assert.strictEqual(await optional.tickets.connecting(allowed.connection), null);
+    assert.deepStrictEqual(allowed.rejected, []);
+
+    // An older host's clients never pass their link's ticket on: required is not enforced there.
+    const older = ticketSetup({ required: true }, false);
+    assert.strictEqual(older.tickets.api.required(), false);
+    const join = joining("");
+    assert.strictEqual(await older.tickets.connecting(join.connection), null);
+    assert.deepStrictEqual(join.rejected, []);
+    assert.deepStrictEqual(older.warnings, []);
 });
 // Source-level TypeScript tests.

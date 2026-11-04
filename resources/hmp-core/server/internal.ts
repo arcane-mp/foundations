@@ -20,6 +20,15 @@ export interface CoreConfig extends Record<string, unknown> {
     duplicateSessionMinimumGrade: number;
     kickDuplicateSession: boolean;
     identityOrder: string[];
+    tickets: CoreTicketsConfig;
+}
+
+export interface CoreTicketsConfig {
+    /** Turn away a join no ticket redeemer accepted. */
+    required: boolean;
+    rejectMessage: string;
+    /** How long an accepted ticket is accepted again from the same machine without asking the redeemers. */
+    repeatSeconds: number;
 }
 
 export interface IdentityResult {

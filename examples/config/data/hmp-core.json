@@ -9,5 +9,10 @@
     "steamId",
     "discordId",
     "hardwareId"
-  ]
+  ],
+  "tickets": {
+    "required": false,
+    "rejectMessage": "Join this server from its website.",
+    "repeatSeconds": 120
+  }
 }
