@@ -4,6 +4,7 @@ import providersModule = require("../shared/providers");
 import type {
     HmpResolvedProvidedSpell,
     HmpResolvedSpellPolicy,
+    HmpSpellCooldown,
     HmpSpellLoadoutAssignments,
     HmpSpellProviderInfo,
 } from "../types";
@@ -33,6 +34,8 @@ interface NativeSpells {
     setLoadoutSlot(slot: number, spellName: string | null, loadoutIndex?: number, emitAssignmentEvent?: boolean): boolean;
     cast(slot: number): NativeSpellCastResult;
     castRecord(recordPath: string, aimMode?: number): NativeSpellCastResult;
+    /** Absent on a host older than the cooldown report. */
+    cooldowns?(): HmpSpellCooldown[];
 }
 
 // SpellLearning's lessons of a resource's own; a host without define has none of this.
@@ -106,12 +109,22 @@ function createSpellClient(dependencies: ClientDependencies) {
         return !!lockId && revokedLocks.has(lockId);
     }
 
+    // Gameplay names include Creator Kit spells registered with the native slot system.
+    // Record-only, unavailable and revoked references stay saved, but have no native slot mapping.
+    function nativeNameOf(spell: HmpResolvedProvidedSpell | null): string | null {
+        return spell?.kind === "native" && !isRevoked(spell) ? spell.nativeName || null : null;
+    }
+
+    // The game keys a cooldown by the gameplay name a slot projects.
+    function cooldownOf(nativeName: string | null, running: HmpSpellCooldown[]): HmpSpellCooldown | null {
+        const entry = nativeName ? running.find((cooldown) => cooldown.spell === nativeName) : undefined;
+        return entry && entry.remaining > 0 ? { spell: entry.spell, remaining: entry.remaining, total: entry.total, paused: entry.paused } : null;
+    }
+
     function projectSlot(loadout: number, slot: number, spellRef: string | null, emitAssignmentEvent = false): boolean {
-        const spell = resolveSpell(spellRef);
-        // Gameplay names include Creator Kit spells registered with the native slot system.
-        // Record-only, unavailable and revoked references stay saved, but have no native slot mapping;
-        // clear that cell so it cannot retain another character's spell or one the policy took away.
-        const nativeName = spell?.kind === "native" && !isRevoked(spell) ? spell.nativeName || null : null;
+        // A cell without a native mapping is cleared so it cannot retain another character's spell or
+        // one the policy took away.
+        const nativeName = nativeNameOf(resolveSpell(spellRef));
         internalProjectionDepth++;
         try {
             const accepted = dependencies.spells.setLoadoutSlot(slot, nativeName, loadout, emitAssignmentEvent);
@@ -178,6 +191,13 @@ function createSpellClient(dependencies: ClientDependencies) {
         return { index, current: activeLoadout(), source: "hmp-spells", slots: [...assignments[index]] };
     }
 
+    // Lined up with loadout(index).slots.
+    function cooldowns(index = activeLoadout()): Array<HmpSpellCooldown | null> | null {
+        if (!ready || !dependencies.spells.cooldowns || index < 0 || index > 3 || !Number.isSafeInteger(index)) return null;
+        const running = dependencies.spells.cooldowns();
+        return assignments[index].map((spellRef) => cooldownOf(nativeNameOf(resolveSpell(spellRef)), running));
+    }
+
     function setLoadoutSlot(slot: number, rawSpellRef: string | null, loadoutIndex = activeLoadout()): boolean {
         if (stopped || characterId === null || !Number.isSafeInteger(slot) || slot < 0 || slot > 3
             || !Number.isSafeInteger(loadoutIndex) || loadoutIndex < 0 || loadoutIndex > 3) return false;
@@ -210,6 +230,9 @@ function createSpellClient(dependencies: ClientDependencies) {
             return { ...result, slot, spellName: spellRef };
         }
         if (spell.kind === "native") {
+            // The game ignores a press while the spell cools down, which the native result does not say.
+            const running = dependencies.spells.cooldowns?.() ?? [];
+            if (cooldownOf(nativeNameOf(spell), running)) return { accepted: false, slot, spellName: spellRef, reason: `spell '${spellRef}' is cooling down` };
             const result = dependencies.spells.cast(slot);
             return { ...result, spellName: spellRef };
         }
@@ -265,11 +288,15 @@ function createSpellClient(dependencies: ClientDependencies) {
         dependencies.notify?.(`[spells] loadout ${state.current + 1}: ${labels}`);
     }
 
-    function reportCast(path: unknown): void {
+    function relaySpell(eventName: string, path: unknown): void {
         const spell = String(path || "").slice(0, 500);
         const name = (spell.match(/\/Spells\/([^/]+)\//) || [])[1] || "";
-        dependencies.events.emitServer("hmp-spells:cast", JSON.stringify({ spell, name }));
+        dependencies.events.emitServer(eventName, JSON.stringify({ spell, name }));
     }
+
+    const reportCast = (path: unknown): void => relaySpell("hmp-spells:cast", path);
+    // A toggle spell went off; the host names it as its spellCast did.
+    const reportStop = (path: unknown): void => relaySpell("hmp-spells:stopped", path);
 
     function reportLesson(token: number, id: string, status: string, reason: string | null): void {
         if (status !== "completed") {
@@ -336,8 +363,8 @@ function createSpellClient(dependencies: ClientDependencies) {
 
     dependencies.events.emitServer("hmp-spells:ready");
     return Object.freeze({
-        apply, acknowledgeAssignments, loadout, setLoadoutSlot, cast, importNativeAssignments,
-        diagnostic, reportCast, startLesson, lessonFinished, cancelLesson, stop,
+        apply, acknowledgeAssignments, loadout, cooldowns, setLoadoutSlot, cast, importNativeAssignments,
+        diagnostic, reportCast, reportStop, startLesson, lessonFinished, cancelLesson, stop,
         status: () => ({ ready, stopped, characterId, assignments, providers, assignmentsDirty, policy: current }),
     });
 }

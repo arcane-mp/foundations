@@ -241,6 +241,16 @@ assignments instead of capturing the previous character's native diamond.
 A successful slot change from either the public API or the stock spell menu emits the client
 `spellAssignment` event. Its `source` is `api` or `native-menu`; login restoration is suppressed.
 
+`cooldowns(loadout?)` lines up with `loadout(loadout?).slots`: each slot's spell while it cools down, as
+`{ spell, remaining, total, paused }` in seconds at the rate the game drains it now (`remaining / total`
+is the game's own bar fill), or `null` for a slot that is empty, record-only, revoked or ready. `cast`
+refuses a slot whose spell is cooling down, a press the game would ignore. A custom HUD re-reads both on
+the host's `spellCooldownChanged` and `spellLoadoutChanged`. Cooldowns need HogwartsMP `1.11` or newer
+for `Spells.cooldowns`; on an older host `cooldowns()` returns `null` and `cast` leaves every press to
+the game. Calls that default to the selected set (`loadout`, `cooldowns`, `setLoadoutSlot`, `cast`)
+follow F1-F4 and the wheel on HogwartsMP `1.11` or newer; `1.10` reports the first set whichever is
+selected.
+
 ## Advisory spell-cast event
 
 Native local casts are forwarded to the server and re-emitted as `hmp:spells:cast`. The payload includes
@@ -254,10 +264,16 @@ the server drops that relay, so each cast is reported once. This needs HogwartsM
 `playerSpellCast`, which came with `Spells.define`; an older host has no defined spells, and every report
 comes from the client relay.
 
-This event is client-reported and therefore forgeable, from either source: the host's event is the
-caster's client's word too, checked only for a defined id and a wand tip within 5 m. It is rate-limited
-for operational safety (`maxCastReportsPerSecond` covers both), but it must not authorize damage,
-currency, quest rewards, anti-cheat action, or other consequential state.
+A toggle spell going off, Lumos's light or Disillusionment's charm (or a defined spell built on either),
+by a recast or anything else, is re-emitted as `hmp:spells:stopped` with the fields of its cast, less
+`cast`. The host has no server event for it, so the client relays every stop, a defined spell's by its
+id. It needs HogwartsMP `1.11` or newer, whose client raises `spellStopped`; an older host reports no
+stops.
+
+These events are client-reported and therefore forgeable, from any source: the host's event is the
+caster's client's word too, checked only for a defined id and a wand tip within 5 m. They are rate-limited
+for operational safety (`maxCastReportsPerSecond` covers casts and stops together), but they must not
+authorize damage, currency, quest rewards, anti-cheat action, or other consequential state.
 
 ## Closed-testing command
 

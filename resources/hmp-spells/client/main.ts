@@ -8,6 +8,8 @@ declare const Spells: {
     setLoadoutSlot(slot: number, spellName: string | null, loadoutIndex?: number, emitAssignmentEvent?: boolean): boolean;
     cast(slot: number): { accepted: boolean; slot: number; spellName: string | null; reason: string | null };
     castRecord(recordPath: string, aimMode?: number): { accepted: boolean; slot: number; spellName: string | null; reason: string | null };
+    /** Absent on a host older than the cooldown report. */
+    cooldowns?(): Array<{ spell: string; remaining: number; total: number; paused: boolean }>;
 };
 
 const { createSpellClient } = clientModule;
@@ -29,6 +31,7 @@ const client = createSpellClient({
 
 Exports.register("clientStatus", client.status);
 Exports.register("loadout", client.loadout);
+Exports.register("cooldowns", client.cooldowns);
 Exports.register("setLoadoutSlot", client.setLoadoutSlot);
 Exports.register("cast", client.cast);
 Exports.register("importNativeAssignments", client.importNativeAssignments);
@@ -38,6 +41,7 @@ Events.on("hmp-spells:assignments-saved", client.acknowledgeAssignments);
 Events.on("hmp-spells:diagnostic", client.diagnostic);
 Events.on("spellAssignment", client.importNativeAssignments);
 Events.on("spellCast", client.reportCast);
+Events.on("spellStopped", client.reportStop);
 Events.on("hmp-spells:lesson", client.startLesson);
 Events.on("hmp-spells:lesson-cancel", client.cancelLesson);
 Events.on("spellLearningFinished", client.lessonFinished);

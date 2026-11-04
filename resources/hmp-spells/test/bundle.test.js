@@ -76,6 +76,7 @@ assert.deepStrictEqual([...serverExports.keys()], ["catalog", "policy", "rules",
 assert.ok(serverHandlers.has("client:hmp-spells:ready"));
 assert.ok(serverHandlers.has("client:hmp-spells:assignments"));
 assert.ok(serverHandlers.has("client:hmp-spells:cast"));
+assert.ok(serverHandlers.has("client:hmp-spells:stopped"));
 assert.ok(serverHandlers.has("client:hmp-spells:lesson-finished"));
 assert.ok(serverHandlers.has("playerSpellCast"));
 assert.ok(serverHandlers.has("worldReady"));
@@ -108,7 +109,7 @@ global.Spells = {
 };
 global.Game = { notify() {} };
 require(path.resolve(__dirname, "..", "dist", "client.js"));
-assert.deepStrictEqual([...clientExports.keys()], ["clientStatus", "loadout", "setLoadoutSlot", "cast", "importNativeAssignments"]);
+assert.deepStrictEqual([...clientExports.keys()], ["clientStatus", "loadout", "cooldowns", "setLoadoutSlot", "cast", "importNativeAssignments"]);
 assert.ok(clientHandlers.has("hmp-spells:policy"));
 assert.ok(clientHandlers.has("hmp-spells:assignments-saved"));
 assert.ok(clientHandlers.has("spellAssignment"));
@@ -122,6 +123,12 @@ clientHandlers.get("spellAssignment")({ source: "native-menu" });
 assert.strictEqual(clientEmits.at(-1).name, "hmp-spells:assignments");
 assert.strictEqual(JSON.parse(clientEmits.at(-1).payload).assignments[0][0], "native:Bombarda");
 clientHandlers.get("spellCast")("/Game/Spells/Lumos/DA_LumosSpellRecord");
+clientHandlers.get("spellStopped")("/Game/Spells/Lumos/DA_LumosSpellRecord");
+assert.deepStrictEqual(JSON.parse(clientEmits.at(-1).payload), { spell: "/Game/Spells/Lumos/DA_LumosSpellRecord", name: "Lumos" });
+assert.strictEqual(clientEmits.at(-1).name, "hmp-spells:stopped");
+// HogwartsMP 1.10 has no Spells.cooldowns: there are none to report, and a press goes to the game.
+assert.strictEqual(clientExports.get("cooldowns")(), null);
+assert.strictEqual(clientExports.get("cast")(0).accepted, true);
 assert.ok(clientHandlers.has("hmp-spells:lesson-cancel"));
 assert.ok(clientHandlers.has("spellLearningFinished"));
 // HogwartsMP 1.9.2 has no SpellLearning.define, so an offered lesson fails as unsupported.
@@ -194,6 +201,16 @@ async function assignmentSaveContract() {
         cast: { aimYaw: 90, wand: { x: 1, y: 2, z: 3 } },
     });
     assert.strictEqual(casts()[0].cast, undefined);
+
+    // No host event reports a toggle going off: the client relays each, a defined one by its id.
+    const stops = () => serverEmits.filter((event) => event.name === "hmp:spells:stopped").map((event) => event.payload);
+    serverHandlers.get("client:hmp-spells:stopped")(player, JSON.stringify({ spell: "/Game/Spells/Lumos/DA_LumosSpellRecord", name: "Lumos" }));
+    serverHandlers.get("client:hmp-spells:stopped")(player, JSON.stringify({ spell: "Firestorm", name: "" }));
+    await new Promise(setImmediate);
+    assert.deepStrictEqual(stops().map((report) => [report.spell, report.name, report.lockId, report.entitled, report.advisory, "cast" in report]), [
+        ["/Game/Spells/Lumos/DA_LumosSpellRecord", "Lumos", "Spell_Lumos", false, true, false],
+        ["Firestorm", "Firestorm", "Spell_Firestorm", true, true, false],
+    ]);
     serverHandlers.get("resourceStop")("hmp-spells");
     assert.deepStrictEqual(removedSpells, ["Firestorm"], "stopping hmp-spells removes the spells it defined");
 }

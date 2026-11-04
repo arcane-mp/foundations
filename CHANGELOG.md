@@ -52,6 +52,16 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   restarts. A lock rule without it still locks each door in each player's own game, which nobody can pick.
   It needs HogwartsMP `1.11` or newer for `Doors.allowUnlock`; an older host ignores it, and the rule stays
   a plain lock.
+- `hmp-spells` `hmp:spells:stopped` reports a toggle spell going off, Lumos's light or Disillusionment's
+  charm (or a server-defined spell built on either), by a recast or anything else, with the fields of its
+  `hmp:spells:cast` less `cast`. The client relays every stop, a defined spell's by its id; it is advisory
+  and shares `maxCastReportsPerSecond` with casts. It needs HogwartsMP `1.11` or newer for `spellStopped`;
+  an older host reports no stops.
+- `hmp-spells` client `cooldowns(loadout?)` lines up with `loadout().slots`: each slot's spell while it
+  cools down, with its remaining and total seconds and whether the game holds it, or `null`. `cast` now
+  refuses a slot whose spell is cooling down instead of accepting a press the game ignores. It needs
+  HogwartsMP `1.11` or newer for `Spells.cooldowns`; on an older host `cooldowns()` returns `null` and
+  `cast` works as before.
 
 ### Fixed
 

@@ -102,8 +102,8 @@ Events.onClient("hmp-spells:lesson-finished", (player: HmpSpellPlayer, raw: unkn
 });
 
 const castWindows = new Map<number, { startedAt: number; count: number }>();
-// Both sources are the caster's client's word, so every report stays advisory.
-function reportCast(player: HmpSpellPlayer, spell: string, name: string, cast?: HogwartsMpSpellCastInfo): void {
+// Every source is the caster's client's word, so every report stays advisory.
+function reportSpell(eventName: "hmp:spells:cast" | "hmp:spells:stopped", player: HmpSpellPlayer, spell: string, name: string, cast?: HogwartsMpSpellCastInfo): void {
     const now = Date.now();
     const id = Number(player.id);
     const current = castWindows.get(id);
@@ -124,8 +124,8 @@ function reportCast(player: HmpSpellPlayer, spell: string, name: string, cast?: 
             ...(cast ? { cast: { aimYaw: cast.aimYaw, wand: { x: cast.wand.x, y: cast.wand.y, z: cast.wand.z } } } : {}),
             receivedAt: new Date(now).toISOString(),
         };
-        Events.emit("hmp:spells:cast", report);
-    }).catch((error) => logger.debug(`Ignored spell cast report for #${id}: ${messageOf(error)}`));
+        Events.emit(eventName, report);
+    }).catch((error) => logger.debug(`Ignored spell report for #${id}: ${messageOf(error)}`));
 }
 
 Events.onClient("hmp-spells:cast", (player: HmpSpellPlayer, raw: unknown) => {
@@ -133,10 +133,17 @@ Events.onClient("hmp-spells:cast", (player: HmpSpellPlayer, raw: unknown) => {
     const spell = String(payload.spell || "").slice(0, 500);
     // spellCast names a server-defined spell by its id, and the host reports that cast itself.
     if (spells.definitions.get(spell)) return;
-    reportCast(player, spell, String(payload.name || "").slice(0, 100));
+    reportSpell("hmp:spells:cast", player, spell, String(payload.name || "").slice(0, 100));
 });
 // Only server-defined spells, checked against the host's own table, with the aim and wand tip.
-Events.on("playerSpellCast", (player: HmpSpellPlayer, spell: string, cast: HogwartsMpSpellCastInfo) => reportCast(player, String(spell), String(spell), cast));
+Events.on("playerSpellCast", (player: HmpSpellPlayer, spell: string, cast: HogwartsMpSpellCastInfo) => reportSpell("hmp:spells:cast", player, String(spell), String(spell), cast));
+// No host event reports a toggle going off, defined or not, so the client relays every one.
+Events.onClient("hmp-spells:stopped", (player: HmpSpellPlayer, raw: unknown) => {
+    const payload = parsePayload(raw);
+    const spell = String(payload.spell || "").slice(0, 500);
+    const name = spells.definitions.get(spell) ? spell : String(payload.name || "").slice(0, 100);
+    reportSpell("hmp:spells:stopped", player, spell, name);
+});
 
 async function isAdmin(player: HmpSpellPlayer): Promise<boolean> {
     if (!config.adminGroups.length) return false;

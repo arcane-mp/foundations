@@ -10,7 +10,7 @@ import serviceModule = require("../server/service");
 import clientModule = require("../client/service");
 import loadoutsModule = require("../shared/loadouts");
 import providersModule = require("../shared/providers");
-import type { HmpSpellLoadoutAssignments, HmpSpellRule } from "../types";
+import type { HmpSpellCooldown, HmpSpellLoadoutAssignments, HmpSpellRule } from "../types";
 
 const { catalog } = catalogModule;
 const { normalizeDefinition, normalizeLesson, normalizeRule, loadConfig } = configModule;
@@ -262,6 +262,8 @@ async function run(): Promise<void> {
     let assignmentListener: ((event: { source: "api" }) => boolean) | undefined;
     const recordCasts: string[] = [];
     const clientLogs: string[] = [];
+    let running: HmpSpellCooldown[] = [];
+    let nativeCasts = 0;
     const client = createSpellClient({
         events: { emitServer: (name, payload) => serverEvents.push({ name, payload }) },
         spells: {
@@ -275,8 +277,9 @@ async function run(): Promise<void> {
                 if (emitAssignmentEvent) assignmentListener?.({ source: "api" });
                 return true;
             },
-            cast: (slot) => ({ accepted: true, slot, spellName: "Lumos", reason: null }),
+            cast: (slot) => { nativeCasts++; return { accepted: true, slot, spellName: "Lumos", reason: null }; },
             castRecord: (path) => { recordCasts.push(path); return { accepted: true, slot: -1, spellName: path, reason: null }; },
+            cooldowns: () => running,
         },
         log: (message) => clientLogs.push(message),
         debug: (message) => clientLogs.push(message),
@@ -325,6 +328,8 @@ async function run(): Promise<void> {
     assert.strictEqual(recordCasts.length, 1, "restoration and native-menu imports must not cast records automatically");
     client.reportCast("/Game/Spells/Lumos/DA_LumosSpellRecord.DA_LumosSpellRecord");
     assert.strictEqual(JSON.parse(String(serverEvents.at(-1)?.payload)).name, "Lumos");
+    client.reportStop("/Game/Spells/Lumos/DA_LumosSpellRecord.DA_LumosSpellRecord");
+    assert.deepStrictEqual([serverEvents.at(-1)?.name, JSON.parse(String(serverEvents.at(-1)?.payload)).name], ["hmp-spells:stopped", "Lumos"]);
 
     // Reproduce Kingsley -> empty character -> Kingsley through both real services. Only the
     // game mutation/event is simulated here; this does not verify installation of the native hook.
@@ -565,6 +570,30 @@ async function run(): Promise<void> {
     assert.strictEqual(nativeAssignments[0][0], null, "a revoked defined spell must leave its quick slots");
     assert.strictEqual(client.setLoadoutSlot(1, "Firestorm", 0), false);
 
+    // Cooldowns line up with a loadout's slots by the gameplay name each projects, and cast() refuses
+    // a press the game would ignore.
+    const coolingSlots: HmpSpellLoadoutAssignments = [
+        ["kingsley:fireball", "native:Accio", "native:Expulso", "native:Confringo"], [null, null, null, null],
+        [null, null, null, null], ["native:Accio", null, null, null],
+    ];
+    client.apply({ characterId: 42, unlockSpells: ["Spell_Accio", "Spell_Confringo"], lockSpells: ["Spell_Expulso"], assignments: coolingSlots, providers: [testProvider] });
+    running = [
+        { spell: "Accio", remaining: 3, total: 6, paused: false },
+        { spell: "Expulso", remaining: 2, total: 4, paused: false },
+        { spell: "Confringo", remaining: -0.1, total: 8, paused: false },
+    ];
+    activeLoadout = 0;
+    const accio = { spell: "Accio", remaining: 3, total: 6, paused: false };
+    assert.deepStrictEqual(client.cooldowns(), [null, accio, null, null], "a record-only, revoked or finished slot has none");
+    assert.deepStrictEqual(client.cooldowns(3), [accio, null, null, null]);
+    assert.strictEqual(client.cooldowns(4), null);
+    const nativeCastsBefore = nativeCasts;
+    assert.deepStrictEqual(client.cast(1), { accepted: false, slot: 1, spellName: "native:Accio", reason: "spell 'native:Accio' is cooling down" });
+    assert.strictEqual(nativeCasts, nativeCastsBefore);
+    assert.strictEqual(client.cast(3).accepted, true, "a cooldown pushed below zero is over");
+    running = [];
+    assert.strictEqual(client.cast(1).accepted, true);
+
     // A host without SpellLearning.define can't run an offered lesson: it fails, and says so.
     const lastLessonReport = () => {
         const report = serverEvents.filter((event) => event.name === "hmp-spells:lesson-finished").at(-1);
@@ -612,6 +641,10 @@ async function run(): Promise<void> {
     assert.strictEqual(learner.startLesson(JSON.stringify({ token: 7, id: "FirestormLesson", lesson: { title: "Firestorm" } })), false);
     assert.deepStrictEqual(learning, ["define FirestormLesson Firestorm", "start FirestormLesson", "undefine FirestormLesson"]);
     assert.deepStrictEqual(lastLessonReport(), { token: 7, status: "failed", reason: "ui-busy" });
+    // A host without Spells.cooldowns reports none, and leaves every press to the game.
+    learner.apply({ characterId: 42, unlockSpells: ["Spell_Accio"], assignments: coolingSlots, providers: [testProvider] });
+    assert.strictEqual(learner.cooldowns(), null);
+    assert.deepStrictEqual(learner.cast(1), { accepted: false, slot: 1, spellName: "native:Accio", reason: null });
     learner.stop();
     client.stop();
     assert.deepStrictEqual(policies.at(-1), { ids: [], loadouts: -1, relock: [] });

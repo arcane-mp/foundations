@@ -211,6 +211,20 @@ export interface HmpSpellCastReport<P = HmpSpellPlayer> {
     receivedAt: string;
 }
 
+/** The `hmp:spells:stopped` payload: a toggle spell the caster had on went off. The caster's client's word too. */
+export type HmpSpellStopReport<P = HmpSpellPlayer> = Omit<HmpSpellCastReport<P>, "cast">;
+
+/** A slotted spell cooling down (client `cooldowns()`), in seconds at the rate the game drains it now. */
+export interface HmpSpellCooldown {
+    /** The gameplay name the slot projects and the game keys its cooldown by. */
+    spell: string;
+    remaining: number;
+    /** `remaining / total` is the game's own spell-bar fill. */
+    total: number;
+    /** The game holds it rather than draining it. */
+    paused: boolean;
+}
+
 export interface HmpSpellCatalogApi {
     resolve(spell: string): string | null;
     get(spell: string): HmpSpellDefinition | null;
