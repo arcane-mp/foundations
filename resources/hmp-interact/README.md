@@ -167,6 +167,52 @@ the game files him as a professor; expect his look to be odd.
 | Staff and enforcers | AgnesScriven, GladwinMoon, NoreenBlainey, RuthSinger, T2AuthorityFemale1, T2AuthorityFemale2, T2AuthorityMale1, T2AuthorityMale2 |
 | Other | AnneThisbe, CarriageDriver, IgnatiaFlooTravel, IsidoraBrother, IsidoraMorganachFather, NiamhFitzgerald, PensieveStudent, StudentVictim |
 
+### Look, idle clip, wand and prop
+
+A character can also wear a saved look, loop an idle clip, and hold a wand or a prop:
+
+```ts
+Interact.register({
+    id: "shop.lamplighter",
+    resource: "hmp-shops",
+    label: "Buy oil",
+    position: { x: 100, y: 200, z: 300 },
+    character: {
+        characterId: "AgnesCoffey",
+        look: savedLook, // from player.getLook(), or its JSON text
+        clip: "/Game/Animation/Human/Hu_Crouch_RF_Idle_anm.Hu_Crouch_RF_Idle_anm",
+        wand: "T003_M01_H007_M02",
+        prop: { path: "/Game/Props/SM_Lantern.SM_Lantern", socket: "SKT_LeftHandSocket" },
+    },
+    handler({ player }) {
+        // open the shop
+    },
+});
+```
+
+- `look` dresses the body in a look from `player.getLook()` (or its JSON text) instead of the id's
+  own: gender, face, hair, gear, hood and body. The id then only makes the body human, so any id on the
+  list will do. A look `player.setLook` would refuse, or one with no preset or no gear, makes
+  `register` throw.
+- `clip` is an AnimSequence asset path the character loops as its idle, made for the human skeleton
+  (the `Hu_` clips are). Every client plays it in step, and a player who arrives later joins it there.
+- `wand: true` puts the plain base wand in the right hand; a string names a `DT_CustomWandStyle` row
+  instead, such as `"T003_M01_H007_M02"`.
+- `prop` attaches a mesh to a socket of the body. `path` is the mesh asset path; `socket` defaults to
+  `WandSocket`, the right hand, and the others are `SKT_RightHandSocket`, `SKT_LeftHandSocket`,
+  `prop_hand_r_SKT` and `prop_hand_l_SKT`; `offset` turns (`pitch`, `yaw`, `roll` in degrees), moves
+  (`x`, `y`, `z` in cm) and scales it from there. A wand fills `WandSocket`, so a character with a wand
+  holds its prop in another socket.
+- A clip or wand for a body that cannot take one (`Character.canPlayClip`, `Character.canHoldWand`), and
+  a malformed path, style or socket, make `register` throw.
+
+The character still never walks: its prompt and radius are measured from the fixed `position`, so
+`hmp-interact` offers no path or follow that would carry the body away from them.
+
+These need HogwartsMP `1.11` or newer for `Character.create`'s `look` and the character's
+`playClip`, `setWand` and `equipProp`. An older host ignores them: the character stands in its id's
+own look and idle, empty-handed.
+
 ## Optional seats
 
 An interaction can seat the player: a bench, a chair, a stool at a bar. Once its requirements,

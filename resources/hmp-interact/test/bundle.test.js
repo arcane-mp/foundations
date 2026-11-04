@@ -26,6 +26,18 @@ global.Imports = { get: (name) => {
 global.PlayerManager = { getAll: () => [] };
 const worldObjects = [];
 global.WorldObject = { create: (key, model, options) => { worldObjects.push({ key, model, options }); return {}; }, destroy: () => true };
+const held = [];
+global.Character = {
+    create: (key, characterId, options) => ({
+        playClip: (clip) => { held.push(["clip", options.look, clip]); return true; },
+        setWand: (shown, style) => { held.push(["wand", shown, style]); },
+        equipProp: (path, prop) => { held.push(["prop", path, prop]); },
+    }),
+    destroy: () => true,
+    isAllowed: () => true,
+    canPlayClip: () => true,
+    canHoldWand: () => true,
+};
 global.Events = {
     on: (name, handler) => serverHandlers.set(name, handler),
     onClient: (name, handler) => serverHandlers.set(`client:${name}`, handler),
@@ -42,6 +54,15 @@ serverExports.get("register")({
     object: { model: "/Game/Smoke.Smoke", streamRange: 20000, drawDistance: 0, material: "/Game/M_Smoke.M_Smoke" },
 });
 assert.deepStrictEqual([worldObjects[0].options.streamRange, worldObjects[0].options.drawDistance, worldObjects[0].options.material], [20000, 0, "/Game/M_Smoke.M_Smoke"]);
+serverExports.get("register")({
+    id: "smoke.keeper", resource: "smoke", label: "Keeper", position: { x: 0, y: 0, z: 0 }, handler() {},
+    character: { characterId: "AgnesCoffey", look: "{\"format\":\"hogwartsmp-look\"}", clip: "/Game/Hu_Idle.Hu_Idle", wand: true, prop: { path: "/Game/SM_Lamp.SM_Lamp", socket: "SKT_LeftHandSocket" } },
+});
+assert.deepStrictEqual(held, [
+    ["clip", "{\"format\":\"hogwartsmp-look\"}", "/Game/Hu_Idle.Hu_Idle"],
+    ["wand", true, undefined],
+    ["prop", "/Game/SM_Lamp.SM_Lamp", { socket: "SKT_LeftHandSocket" }],
+]);
 assert.ok(serverHandlers.has("chatCommand"));
 const tester = { id: 3, position: { x: 0, y: 0, z: 0 }, messages: [], emit(name, payload) { this.messages.push({ name, payload }); } };
 const replies = [];

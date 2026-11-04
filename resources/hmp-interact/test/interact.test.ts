@@ -15,7 +15,8 @@ interface TestPlayer extends HmpInteractPlayer {
     messages: Array<{ event: string; payload: unknown }>;
 }
 
-function setup() {
+/** "1.11" characters take a look, an idle clip, a wand and a held prop; a "1.10" one has none of them. */
+function setup(host: "1.10" | "1.11" = "1.11") {
     let clock = 1000;
     const player = (id: number, x = 0): TestPlayer => ({
         id,
@@ -39,6 +40,7 @@ function setup() {
     const destroyed: string[] = [];
     const charactersCreated: Array<{ key: string; characterId: string; options: unknown }> = [];
     const charactersDestroyed: string[] = [];
+    const charactersHeld: unknown[][] = [];
     let failedCreates = 0;
     const service = createInteractService<TestPlayer>({
         core: {
@@ -60,15 +62,31 @@ function setup() {
             destroy(key) { destroyed.push(key); return true; },
         },
         characters: {
-            create(key, characterId, options) { if (characterId === "Peeves") return undefined; charactersCreated.push({ key, characterId, options }); return {}; },
+            create(key, characterId, options) {
+                if (characterId === "Peeves") return undefined;
+                charactersCreated.push({ key, characterId, options });
+                if (host === "1.10") return {};
+                return {
+                    playClip(...args: unknown[]) { charactersHeld.push(["clip", key, ...args]); return true; },
+                    setWand(...args: unknown[]) {
+                        if (args[1] === "T999_Broken") throw new Error("setWand: style must be a DT_CustomWandStyle row key");
+                        charactersHeld.push(["wand", key, ...args]);
+                    },
+                    equipProp(...args: unknown[]) { charactersHeld.push(["prop", key, ...args]); },
+                };
+            },
             destroy(key) { charactersDestroyed.push(key); return true; },
+            ...(host === "1.10" ? {} : {
+                canPlayClip: (characterId: string) => characterId !== "SortingHat",
+                canHoldWand: (characterId: string) => characterId !== "SortingHat",
+            }),
         },
         logger: { info() {}, warn() {}, error() {} },
         now: () => clock,
     });
     return {
         service, first, second, groups, items, notifications, menus, progresses, emitted, created, destroyed,
-        charactersCreated, charactersDestroyed,
+        charactersCreated, charactersDestroyed, charactersHeld,
         choose(value: string | null) { menuChoice = value; },
         completeProgress(value: boolean) { progressResult = value; },
         advance(milliseconds: number) { clock += milliseconds; },
@@ -188,6 +206,63 @@ test("publishes an optional character at the zone position and destroys it with 
     assert.strictEqual(dispose(), true);
     assert.deepStrictEqual(state.charactersDestroyed, ["hmp-interact:shop.ollivander"]);
     assert.deepStrictEqual(state.destroyed, []);
+});
+
+test("dresses a character in a look, an idle clip, a wand and a held prop", () => {
+    const state = setup();
+    const look = { format: "hogwartsmp-look", version: 6, gender: "female", presets: { Face: "HUF_Face_01" }, gear: ["GA_Outfit_002"] };
+    const clip = "/Game/Animation/Human/Hu_Crouch_RF_Idle_anm.Hu_Crouch_RF_Idle_anm";
+    const lantern = "/Game/Props/SM_Lantern.SM_Lantern";
+    state.service.register({
+        id: "shop.keeper", resource: "hmp-shops", label: "Browse", position: { x: 0, y: 0, z: 0 }, handler() {},
+        character: { characterId: "AgnesCoffey", look: look as never, clip, wand: "T003_M01_H007_M02", prop: { path: lantern, socket: "SKT_LeftHandSocket", offset: { yaw: 900, x: 10 } } },
+    });
+    const created = state.charactersCreated[0].options as { look: unknown };
+    assert.deepStrictEqual(created.look, look);
+    assert.notStrictEqual(created.look, look, "the body wears a copy of the look");
+    assert.deepStrictEqual(state.charactersHeld, [
+        ["clip", "hmp-interact:shop.keeper", clip],
+        ["wand", "hmp-interact:shop.keeper", true, "T003_M01_H007_M02"],
+        ["prop", "hmp-interact:shop.keeper", lantern, { socket: "SKT_LeftHandSocket", offset: { pitch: 0, yaw: 360, roll: 0, x: 10, y: 0, z: 0, scale: 1 } }],
+    ]);
+    state.service.register({ id: "shop.wand", resource: "hmp-shops", label: "Browse", position: { x: 0, y: 0, z: 0 }, handler() {}, character: { characterId: "AgnesCoffey", wand: true } });
+    state.service.register({ id: "shop.lamp", resource: "hmp-shops", label: "Browse", position: { x: 0, y: 0, z: 0 }, handler() {}, character: { characterId: "AgnesCoffey", prop: { path: lantern } } });
+    assert.deepStrictEqual(state.charactersHeld.slice(3), [
+        ["wand", "hmp-interact:shop.wand", true, undefined],
+        ["prop", "hmp-interact:shop.lamp", lantern, { socket: "WandSocket" }],
+    ]);
+    assert.ok(!("look" in (state.charactersCreated[1].options as object)), "no look leaves the id's own");
+
+    const refused = (character: Record<string, unknown>) => () => state.service.register({
+        id: "shop.refused", resource: "hmp-shops", label: "Refused", position: { x: 0, y: 0, z: 0 }, handler() {},
+        character: { characterId: "AgnesCoffey", ...character } as never,
+    });
+    assert.throws(refused({ clip: "Hu_Crouch_RF_Idle_anm" }), /invalid character clip/);
+    assert.throws(refused({ clip: "/Game/../Secret.Secret" }), /invalid character clip/);
+    assert.throws(refused({ wand: "T003 M01" }), /invalid character wand/);
+    assert.throws(refused({ look: 5 }), /invalid character look/);
+    assert.throws(refused({ look: " " }), /invalid character look/);
+    assert.throws(refused({ prop: { socket: "SKT_LeftHandSocket" } }), /invalid character prop/);
+    assert.throws(refused({ wand: true, prop: { path: lantern } }), /cannot hold a prop in WandSocket with its wand/);
+    assert.throws(refused({ characterId: "SortingHat", clip }), /'SortingHat' cannot play a clip/);
+    assert.throws(refused({ characterId: "SortingHat", wand: true }), /'SortingHat' cannot hold a wand/);
+    assert.strictEqual(state.charactersCreated.length, 3, "a body that cannot take them is never created");
+    // A host refusal after creation takes the body away again.
+    assert.throws(refused({ wand: "T999_Broken" }), /DT_CustomWandStyle/);
+    assert.deepStrictEqual(state.charactersDestroyed, ["hmp-interact:shop.refused"]);
+    assert.strictEqual(state.service.get("shop.refused"), null);
+});
+
+test("a host before character clips builds the body and ignores its look, clip, wand and prop", () => {
+    const state = setup("1.10");
+    state.service.register({
+        id: "shop.keeper", resource: "hmp-shops", label: "Browse", position: { x: 0, y: 0, z: 0 }, handler() {},
+        character: { characterId: "SortingHat", look: "{}", clip: "/Game/Hu_Idle.Hu_Idle", wand: true, prop: { path: "/Game/SM_Lantern.SM_Lantern", socket: "SKT_LeftHandSocket" } },
+    });
+    assert.strictEqual(state.charactersCreated.length, 1);
+    assert.strictEqual((state.charactersCreated[0].options as { look: string }).look, "{}", "an older host ignores the option");
+    assert.deepStrictEqual(state.charactersHeld, []);
+    assert.ok(state.service.get("shop.keeper"));
 });
 
 test("seats one player at a time and frees the seat when they stand, leave or it goes away", async () => {

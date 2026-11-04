@@ -19,6 +19,12 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   `state.targetId` (0 otherwise), and `hmp:npcs:moveEnded` forwards `"targetGone"` when the target
   leaves. Like the other movement calls it is false for an NPC another resource spawned. It needs
   HogwartsMP `1.11` or newer for `npc.follow`; on an older host it is false.
+- `hmp-interact` characters take a `look`, `clip`, `wand` and `prop`: the body wears a saved look
+  (`player.getLook()`) instead of its id's own, loops an idle clip every client plays in step, and
+  holds a wand (`true`, or a `DT_CustomWandStyle` row) or a mesh in a hand socket. Each is off unless
+  set, and a clip or wand the body cannot take (`Character.canPlayClip`, `canHoldWand`), a malformed
+  path, or a prop in the wand's own socket makes `register` throw. It needs HogwartsMP `1.11` or newer
+  for `Character.create`'s `look` and `playClip`, `setWand` and `equipProp`; an older host ignores them.
 
 ### Fixed
 

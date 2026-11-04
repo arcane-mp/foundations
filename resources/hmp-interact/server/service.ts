@@ -6,7 +6,7 @@ import type {
     HmpInteractionOption,
     HmpInteractionRequirements,
 } from "../types";
-import type { InteractDependencies, InteractService } from "./internal";
+import type { InteractCharacter, InteractCharacters, InteractDependencies, InteractService } from "./internal";
 
 const { clean, normalizeInteraction, publicZone } = normalizeModule;
 
@@ -25,6 +25,30 @@ function worldObjectKey(id: string): string {
 
 /** Centimetres over the pawn origin for a character's nameplate; matches the mod's player nameplates. */
 const CHARACTER_LABEL_HEIGHT = 100;
+
+type InteractionCharacter = NonNullable<HmpInteractionDefinition["character"]>;
+
+/** Refuses a clip or wand the body cannot take, on a host that can tell, before anything is created. */
+function fits(characters: InteractCharacters, character: InteractionCharacter, id: string): void {
+    if (character.clip && typeof characters.canPlayClip === "function" && !characters.canPlayClip(character.characterId)) {
+        throw new TypeError(`interaction '${id}' character '${character.characterId}' cannot play a clip`);
+    }
+    if (character.wand && typeof characters.canHoldWand === "function" && !characters.canHoldWand(character.characterId)) {
+        throw new TypeError(`interaction '${id}' character '${character.characterId}' cannot hold a wand`);
+    }
+}
+
+/** Loops the idle clip and puts the wand and prop in hand; a host before character clips shows none of them. */
+function hold(handle: InteractCharacter, character: InteractionCharacter): void {
+    if (character.clip && typeof handle.playClip === "function") handle.playClip(character.clip);
+    if (character.wand && typeof handle.setWand === "function") {
+        handle.setWand(true, typeof character.wand === "string" ? character.wand : undefined);
+    }
+    const prop = character.prop;
+    if (prop && typeof handle.equipProp === "function") {
+        handle.equipProp(prop.path, prop.offset ? { socket: prop.socket, offset: prop.offset } : { socket: prop.socket });
+    }
+}
 
 function createInteractService<P extends HmpInteractPlayer>(dependencies: InteractDependencies<P>): InteractService<P> {
     const { core, inventory, ui, events, logger } = dependencies;
@@ -124,16 +148,24 @@ function createInteractService<P extends HmpInteractPlayer>(dependencies: Intera
             if (!created) throw new Error(`world object for '${definition.id}' was refused (model: ${String(object.model)})`);
         }
         const character = definition.character;
-        if (character && dependencies.characters) {
+        const characters = dependencies.characters;
+        if (character && characters) {
+            fits(characters, character, definition.id);
             // The optional nameplate sits at player-nameplate height, independent of the chest-level prompt.
-            const created = dependencies.characters.create(worldObjectKey(definition.id), character.characterId, {
+            const created = characters.create(worldObjectKey(definition.id), character.characterId, {
                 ...definition.position,
                 yaw: character.yaw,
                 scale: character.scale,
                 label: character.label,
                 promptHeight: CHARACTER_LABEL_HEIGHT,
+                ...(character.look === undefined ? {} : { look: character.look }),
             });
             if (!created) throw new Error(`character for '${definition.id}' was refused (id: ${character.characterId})`);
+            try { hold(created, character); }
+            catch (error) {
+                characters.destroy(worldObjectKey(definition.id));
+                throw error;
+            }
         }
     }
 

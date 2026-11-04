@@ -778,6 +778,18 @@ declare global {
         }): unknown;
         destroy(key: string): boolean;
     };
+    /** A server-placed character; its clip, wand and prop are HogwartsMP 1.11 or newer, and absent on an older host. */
+    interface HogwartsMpCharacter {
+        /** Loops (by default) an AnimSequence for the human skeleton on every client; throws on a body `canPlayClip` refuses. */
+        playClip?(clipPath: string, options?: { loop?: boolean; hold?: boolean; rate?: number }): boolean;
+        /** Shows the plain base wand, or a `DT_CustomWandStyle` row, in its right hand; throws on a body `canHoldWand` refuses. */
+        setWand?(shown: boolean, style?: string): void;
+        /** Attaches a mesh to a socket of its body (default "WandSocket"), replacing the prop it held. */
+        equipProp?(path: string, options?: {
+            socket?: string;
+            offset?: { pitch?: number; yaw?: number; roll?: number; x?: number; y?: number; z?: number; scale?: number };
+        }): void;
+    }
     const Character: {
         create(key: string, characterId: string, options: {
             x?: number;
@@ -789,9 +801,15 @@ declare global {
             promptText?: string;
             promptHeight?: number;
             promptRange?: number;
-        }): unknown;
+            /** A look a human id's body wears instead of its own; throws on one `player.setLook` would refuse. An older host ignores it. */
+            look?: HogwartsMpLook | string;
+        }): HogwartsMpCharacter | undefined;
         destroy(key: string): boolean;
         isAllowed(characterId: string): boolean;
+        /** HogwartsMP 1.11 or newer. */
+        canPlayClip?(characterId: string): boolean;
+        /** HogwartsMP 1.11 or newer. */
+        canHoldWand?(characterId: string): boolean;
     };
     const Creator: {
         /** @deprecated Use the headless session API with a resource-owned UI. */

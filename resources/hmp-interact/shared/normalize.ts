@@ -1,5 +1,7 @@
 import type {
     HmpInteractVector3,
+    HmpInteractionCharacter,
+    HmpInteractionCharacterProp,
     HmpInteractionDefinition,
     HmpInteractionOption,
     HmpInteractionProgress,
@@ -7,6 +9,8 @@ import type {
 } from "../types";
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
+const WAND_STYLE = /^[A-Za-z0-9_]{1,64}$/;
+const WAND_SOCKET = "WandSocket";
 
 function clean(value: unknown, maximum = 120): string {
     return Array.from(String(value ?? ""), (character) => {
@@ -25,6 +29,54 @@ function cullDistance(value: unknown, minimum: number): number | undefined {
     const number = Number(value);
     if (value === undefined || !Number.isFinite(number) || number < 0) return undefined;
     return number === 0 ? 0 : Math.min(200000, Math.max(minimum, number));
+}
+
+/** An asset path as the host takes one: from the root, up to 256 characters, never climbing out. */
+function assetPath(value: unknown): string | undefined {
+    const path = typeof value === "string" ? value.trim() : "";
+    return path.startsWith("/") && path.length <= 256 && !path.includes("..") ? path : undefined;
+}
+
+/** A character's saved look, idle clip, wand and held prop, each shape-checked before the host sees it. */
+function dress(raw: HmpInteractionCharacter, interactionId: string) {
+    const invalid = (field: string) => new TypeError(`interaction '${interactionId}' has an invalid character ${field}`);
+    let look: HmpInteractionCharacter["look"];
+    if (typeof raw.look === "string" && raw.look.trim() && raw.look.length <= 65536) look = raw.look.trim();
+    else if (raw.look && typeof raw.look === "object" && !Array.isArray(raw.look)) {
+        // A copy, so a caller's later edits never reach the body.
+        try {
+            const text = JSON.stringify(raw.look);
+            if (text.length <= 65536) look = Object.freeze(JSON.parse(text));
+        } catch (_) { /* A cyclic look is refused below. */ }
+    }
+    if (raw.look !== undefined && raw.look !== null && look === undefined) throw invalid("look");
+    const clip = raw.clip === undefined ? undefined : assetPath(raw.clip);
+    if (raw.clip !== undefined && !clip) throw invalid("clip");
+    const wand = raw.wand === undefined || raw.wand === false ? undefined : raw.wand;
+    if (wand !== undefined && wand !== true && !(typeof wand === "string" && WAND_STYLE.test(wand))) throw invalid("wand");
+    let prop: HmpInteractionCharacterProp | undefined;
+    if (raw.prop !== undefined) {
+        const path = raw.prop && typeof raw.prop === "object" ? assetPath(raw.prop.path) : undefined;
+        const socket = raw.prop?.socket === undefined ? WAND_SOCKET : clean(raw.prop.socket, 65);
+        if (!path || !socket || socket.length > 64) throw invalid("prop");
+        // The wand fills that socket, and the body shows one mesh there.
+        if (wand !== undefined && socket === WAND_SOCKET) throw new TypeError(`interaction '${interactionId}' character cannot hold a prop in ${WAND_SOCKET} with its wand`);
+        const offset = raw.prop.offset;
+        prop = Object.freeze({
+            path,
+            socket,
+            offset: offset && typeof offset === "object" ? Object.freeze({
+                pitch: finite(offset.pitch, 0, -360, 360),
+                yaw: finite(offset.yaw, 0, -360, 360),
+                roll: finite(offset.roll, 0, -360, 360),
+                x: finite(offset.x, 0, -500, 500),
+                y: finite(offset.y, 0, -500, 500),
+                z: finite(offset.z, 0, -500, 500),
+                scale: finite(offset.scale, 1, 0.01, 100),
+            }) : undefined,
+        });
+    }
+    return { look, clip, wand, prop };
 }
 
 function point(value: HmpInteractVector3 | undefined): HmpInteractVector3 | undefined {
@@ -124,6 +176,7 @@ function normalizeInteraction<P>(raw: HmpInteractionDefinition<P>): HmpInteracti
         yaw: finite(raw.character.yaw, 0, -360000, 360000),
         scale: finite(raw.character.scale, 1, 0.01, 100),
         label: clean(raw.character.label, 48) || undefined,
+        ...dress(raw.character, interactionId),
     } : undefined;
     if (character && !/^[A-Za-z0-9_]+$/.test(character.characterId)) {
         throw new TypeError(`interaction '${interactionId}' has an invalid character id`);

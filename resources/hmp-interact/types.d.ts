@@ -80,6 +80,16 @@ export interface HmpInteractionWorldObject {
     startFx?: string;
 }
 
+/** A mesh a character holds, attached to a socket of its body. */
+export interface HmpInteractionCharacterProp {
+    /** Mesh asset path starting with "/", up to 256 characters. */
+    path: string;
+    /** The body socket, up to 64 characters; "WandSocket", the right hand, when omitted. */
+    socket?: string;
+    /** From the socket: angles in degrees (-360 to 360), x/y/z in cm (-500 to 500), scale 0.01 to 100 (default 1). */
+    offset?: { pitch?: number; yaw?: number; roll?: number; x?: number; y?: number; z?: number; scale?: number };
+}
+
 export interface HmpInteractionCharacter {
     /** Human registry character id, e.g. "GerboldOllivander". Must pass `Character.isAllowed`. */
     characterId: string;
@@ -87,6 +97,14 @@ export interface HmpInteractionCharacter {
     scale?: number;
     /** Nameplate drawn above the head. */
     label?: string;
+    /** A saved look (`player.getLook()`, or its JSON text) the body wears instead of the id's own; a human id only. */
+    look?: HogwartsMpLook | string;
+    /** AnimSequence asset path the character loops as its idle; it must be for the human skeleton (the `Hu_` clips are). */
+    clip?: string;
+    /** `true` puts the plain base wand in its right hand; a string names a `DT_CustomWandStyle` row instead. */
+    wand?: boolean | string;
+    /** A mesh in its hand. Not in `WandSocket` while it holds a wand. */
+    prop?: HmpInteractionCharacterProp;
 }
 
 export interface HmpInteractionSeat {

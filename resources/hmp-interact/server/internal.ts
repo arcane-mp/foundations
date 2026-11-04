@@ -1,7 +1,7 @@
 import type { HmpCore } from "../../hmp-core/types";
 import type { HmpInventory } from "../../hmp-inventory/types";
 import type { HmpUiServer } from "../../hmp-ui/types";
-import type { HmpInteractPlayer, HmpInteractServer, HmpInteractionDefinition } from "../types";
+import type { HmpInteractPlayer, HmpInteractServer, HmpInteractionCharacterProp, HmpInteractionDefinition } from "../types";
 
 export interface InteractConfig {
     /** Registers the closed-test command that toggles a player's zone outlines. */
@@ -38,6 +38,13 @@ export interface InteractWorldObjects {
     destroy(key: string): boolean;
 }
 
+/** A created character's handle; a host before character clips has none of these. */
+export interface InteractCharacter {
+    playClip?(clipPath: string): boolean;
+    setWand?(shown: boolean, style?: string): void;
+    equipProp?(path: string, options?: { socket?: string; offset?: HmpInteractionCharacterProp["offset"] }): void;
+}
+
 export interface InteractCharacters {
     create(key: string, characterId: string, options: {
         x: number;
@@ -47,8 +54,11 @@ export interface InteractCharacters {
         scale?: number;
         label?: string;
         promptHeight?: number;
-    }): unknown;
+        look?: HogwartsMpLook | string;
+    }): InteractCharacter | undefined;
     destroy(key: string): boolean;
+    canPlayClip?(characterId: string): boolean;
+    canHoldWand?(characterId: string): boolean;
 }
 
 export interface InteractDependencies<P extends HmpInteractPlayer> {
