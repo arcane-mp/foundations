@@ -193,11 +193,22 @@ function createRepository(database: Database): ProgressionRepository {
         return database.update(`DELETE FROM hmp_progression_floo_flames WHERE character_id = ? AND destination_id IN (${ids.map(() => "?").join(", ")})`, [characterId, ...ids]);
     }
 
+    async function fieldGuide(characterId: number): Promise<string | null> {
+        const row = await database.single<{ snapshot_json: string }>("SELECT snapshot_json FROM hmp_progression_field_guides WHERE character_id = ?", [characterId]);
+        return row ? row.snapshot_json : null;
+    }
+    async function saveFieldGuide(characterId: number, snapshotJson: string): Promise<void> {
+        await database.update(
+            "INSERT INTO hmp_progression_field_guides (character_id, snapshot_json) VALUES (?, ?) ON DUPLICATE KEY UPDATE snapshot_json = VALUES(snapshot_json)",
+            [characterId, snapshotJson],
+        );
+    }
+
     return Object.freeze({
         migrate: (migrations: HmpMySQLMigration[]) => database.migrate("hmp-progression", migrations),
         profile, reward, beginReward, applyReward, failReward, rewardHistory, pendingRewards, acknowledge,
         talents, talent, mutateTalent, purchaseTalent, resetTalents, setTalentPoints,
-        flooFlames, lightFlooFlames, dimFlooFlames,
+        flooFlames, lightFlooFlames, dimFlooFlames, fieldGuide, saveFieldGuide,
     });
 }
 

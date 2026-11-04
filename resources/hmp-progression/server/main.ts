@@ -1,4 +1,5 @@
 import configModule = require("./config");
+import fieldGuideModule = require("./fieldguide");
 import flamesModule = require("./flames");
 import repositoryModule = require("./repository");
 import schemaModule = require("./schema");
@@ -6,6 +7,7 @@ import serviceModule = require("./service");
 import type { Player } from "./internal";
 
 const { loadConfig } = configModule;
+const { createFieldGuideSync } = fieldGuideModule;
 const { createFlooFlames } = flamesModule;
 const { createRepository } = repositoryModule;
 const { migrations } = schemaModule;
@@ -20,6 +22,7 @@ const config = loadConfig(Hmp);
 const repository = createRepository(database);
 const service = createProgressionService({ repository, core, events: Events, logger, config, migrations });
 const flames = createFlooFlames({ repository, core, logger, enabled: config.flooFlames, ready: service.start });
+const fieldGuide = createFieldGuideSync({ repository, core, logger, enabled: config.fieldGuide, ready: service.start });
 
 Exports.register("progression", service.progression);
 Exports.register("talents", service.talents);
@@ -37,10 +40,22 @@ Events.on("hmp:character:loaded", (payload: unknown) => {
     if (!player) return;
     void service.characterLoaded(player);
     void flames.characterLoaded(player);
+    void fieldGuide.characterLoaded(player);
 });
-Events.on("hmp:character:unloaded", (payload: unknown) => { const player = loadedPlayer(payload); if (player) service.disconnect(player); });
-Events.on("worldReady", (player: Player) => { if (core.characters.active(player)) void service.worldReady(player); });
-Events.on("playerDisconnect", (player: Player) => { service.disconnect(player); flames.disconnect(player); });
+Events.on("hmp:character:unloaded", (payload: unknown) => {
+    const player = loadedPlayer(payload);
+    if (!player) return;
+    service.disconnect(player);
+    fieldGuide.characterUnloaded(player);
+});
+Events.on("worldReady", (player: Player) => {
+    if (!core.characters.active(player)) return;
+    void service.worldReady(player);
+    fieldGuide.worldReady(player);
+});
+Events.on("playerDisconnect", (player: Player) => { service.disconnect(player); flames.disconnect(player); fieldGuide.disconnect(player); });
+Events.onClient("hmp-progression:field-guide-result", (player: Player, payload: unknown) => { fieldGuide.result(player, payload); });
+Events.onClient("hmp-progression:field-guide-save", (player: Player, payload: unknown) => { fieldGuide.save(player, payload); });
 Events.on("playerFastTravelUnlocked", (player: Player, unlock: unknown) => { void flames.unlocked(player, unlock).catch((error) => logger.warn(`Could not save #${player.id}'s Floo flame: ${messageOf(error)}`)); });
 Events.onClient("hmp-progression:native-report", (player: Player, payload: unknown) => { void service.nativeReport(player, payload).catch((error) => logger.warn(`Native report rejected: ${messageOf(error)}`)); });
 Events.onClient("hmp-progression:native-result", (player: Player, payload: unknown) => { void service.nativeResult(player, payload); });

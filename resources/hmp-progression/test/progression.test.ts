@@ -56,6 +56,8 @@ const repository: ProgressionRepository = {
     flooFlames: async () => [],
     lightFlooFlames: async () => 0,
     dimFlooFlames: async () => 0,
+    fieldGuide: async () => null,
+    saveFieldGuide: async () => {},
 };
 
 const emitted: Array<{ name: string; args: unknown[] }> = [];
@@ -75,7 +77,7 @@ const service = createProgressionService({
         },
     },
     logger: { info() {}, warn(message: string) { warnings.push(message); }, error() {} } as never,
-    config: { enableCommands: true, command: "progression", adminGroups: [], maximumExperience: 1000, maximumTalentPoints: 10, nativeRequestTimeoutMs: 1000, flooFlames: true },
+    config: { enableCommands: true, command: "progression", adminGroups: [], maximumExperience: 1000, maximumTalentPoints: 10, nativeRequestTimeoutMs: 1000, flooFlames: true, fieldGuide: true },
     migrations: [],
 });
 

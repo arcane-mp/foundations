@@ -502,6 +502,10 @@ declare global {
         on(eventName: "chatCommand", listener: (player: HogwartsMpPlayer, message: string, command: string, args: string[]) => unknown): void;
         /** Client: the local player placed, moved or removed their map waypoint. */
         on(eventName: "waypointChanged", listener: (waypoint: HogwartsMpWaypoint | null, previous: HogwartsMpWaypoint | null) => unknown): void;
+        /** Client: the game wrote a collection item's state; not raised by `FieldGuide.restore` or a save load. */
+        on(eventName: "fieldGuideCollectionChanged", listener: (item: HogwartsMpFieldGuideCollectionItem) => unknown): void;
+        /** Client: a challenge record changed, at most once per record per frame; not raised by a restore. */
+        on(eventName: "fieldGuideChallengeChanged", listener: (challenge: HogwartsMpFieldGuideChallenge) => unknown): void;
         on(eventName: "playerConnect" | "playerDisconnect" | "worldReady", listener: (player: HogwartsMpPlayer) => unknown): void;
         on(eventName: "playerInventoryUpdated", listener: (player: HogwartsMpPlayer, rows: unknown) => unknown): void;
         on(eventName: "playerGearChanged", listener: (player: HogwartsMpPlayer) => unknown): void;
@@ -588,6 +592,51 @@ declare global {
         remove(id: string): boolean;
         refund(id: string): boolean;
         reset(category?: string): boolean;
+    };
+    /** Client `FieldGuide`: one collection entry (a page, trait, beast...) in the game's own ids. */
+    interface HogwartsMpFieldGuideCollectionItem {
+        id: string;
+        category: string;
+        subcategory: string;
+        state: "Unknown" | "Known" | "Obtained";
+        updated: number;
+    }
+    /** Client `FieldGuide`: one challenge tier, homework or acknowledgement record. */
+    interface HogwartsMpFieldGuideChallenge {
+        id: string;
+        instances: number;
+        goal: number;
+        complete: boolean;
+        counted: string[];
+        unclaimedRewards: number;
+    }
+    /** What `FieldGuide.snapshot()` returns and `restore` takes back. */
+    interface HogwartsMpFieldGuideSnapshot {
+        version: 1;
+        collections: HogwartsMpFieldGuideCollectionItem[];
+        challenges: HogwartsMpFieldGuideChallenge[];
+        locks: Array<{ id: string; unlocked: boolean }>;
+        pages: {
+            investigated: Array<{ id: string; count: number }>;
+            beacons: Array<{ id: string; state: number }>;
+            keys: Array<{ name: string; value: string }>;
+        };
+    }
+    interface HogwartsMpFieldGuideRestoreResult {
+        ok: boolean;
+        /** Why the snapshot was refused or a write failed. */
+        reason?: string;
+        /** Readback differences, at most 50. */
+        mismatches: string[];
+        /** The world was already loaded: page actors and map icons follow on the next map load. */
+        needsTravel: boolean;
+    }
+    /** Client: the local character's Field Guide collections and challenges; absent on a host without it. */
+    const FieldGuide: {
+        ready(): boolean;
+        snapshot(): HogwartsMpFieldGuideSnapshot | null;
+        /** Absolute, the way a save load is: nothing is collected, paid or granted again; `null` resets the character. */
+        restore(snapshot: HogwartsMpFieldGuideSnapshot | null): HogwartsMpFieldGuideRestoreResult;
     };
     interface HogwartsMpPvpHit {
         casterId: number;

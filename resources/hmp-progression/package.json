@@ -8,7 +8,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "esbuild server/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/server.js --legal-comments=inline && esbuild client/main.ts --bundle --platform=browser --target=es2022 --format=iife --outfile=dist/client.js --legal-comments=inline",
-    "test": "tsx test/progression.test.ts && tsx test/flames.test.ts",
+    "test": "tsx test/progression.test.ts && tsx test/flames.test.ts && tsx test/fieldguide.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "smoke": "node test/bundle.test.js"
   },

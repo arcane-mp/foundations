@@ -10,5 +10,6 @@
   "maximumExperience": 100000000,
   "maximumTalentPoints": 100,
   "nativeRequestTimeoutMs": 8000,
-  "flooFlames": true
+  "flooFlames": true,
+  "fieldGuide": true
 }

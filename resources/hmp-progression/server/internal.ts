@@ -26,6 +26,8 @@ export interface ProgressionConfig {
     nativeRequestTimeoutMs: number;
     /** Keep each character's lit Floo flames and light them again when it loads. */
     flooFlames: boolean;
+    /** Keep each character's Field Guide collections and challenges and restore them when it loads. */
+    fieldGuide: boolean;
 }
 
 export interface RewardDraft {
@@ -69,6 +71,8 @@ export interface ProgressionRepository {
     flooFlames(characterId: number): Promise<string[]>;
     lightFlooFlames(characterId: number, ids: string[]): Promise<number>;
     dimFlooFlames(characterId: number, ids: string[]): Promise<number>;
+    fieldGuide(characterId: number): Promise<string | null>;
+    saveFieldGuide(characterId: number, snapshotJson: string): Promise<void>;
 }
 
 export interface ProgressionDependencies {
@@ -107,4 +111,25 @@ export interface FlooFlames {
     characterLoaded(player: Player): Promise<void>;
     unlocked(player: Player, unlock: unknown): Promise<void>;
     disconnect(player: Player): void;
+}
+
+export interface FieldGuideDependencies {
+    repository: Pick<ProgressionRepository, "fieldGuide" | "saveFieldGuide">;
+    core: Core;
+    logger: Logger;
+    enabled: boolean;
+    /** Resolves once the schema is migrated. */
+    ready(): Promise<void>;
+}
+
+export interface FieldGuideSync {
+    characterLoaded(player: Player): Promise<void>;
+    characterUnloaded(player: Player): void;
+    worldReady(player: Player): void;
+    /** The client's restore (or adoption) result. */
+    result(player: Player, payload: unknown): void;
+    save(player: Player, payload: unknown): void;
+    disconnect(player: Player): void;
+    /** Resolves once every accepted save is written. */
+    idle(): Promise<void>;
 }

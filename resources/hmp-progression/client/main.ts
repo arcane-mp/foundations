@@ -1,3 +1,7 @@
+import fieldGuideModule = require("./fieldguide");
+
+const { createFieldGuideClient } = fieldGuideModule;
+
 interface SyncTalent { id: string; level: number; status: "owned" | "revoked" }
 interface ClientStatus {
     state: "waiting" | "ready" | "degraded" | "stopped";
@@ -89,9 +93,25 @@ function handleRequest(rawPayload: unknown): void {
     Events.emitServer("hmp-progression:native-result", JSON.stringify({ requestId, operation, ok, detail, ...extra }));
 }
 
-Exports.register("clientStatus", () => ({ ...status }));
+// A host without FieldGuide answers the server's restore as unsupported.
+const fieldGuide = createFieldGuideClient({
+    native: typeof FieldGuide === "undefined" || !FieldGuide || typeof FieldGuide.restore !== "function" ? null : FieldGuide,
+    emitServer: (eventName, payload) => { Events.emitServer(eventName, payload); },
+    setTimer: (handler, delay) => setTimeout(handler, delay),
+    clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
+    warn: (message) => console.warn(`[hmp-progression] ${message}`),
+});
+
+Exports.register("clientStatus", () => ({ ...status, fieldGuide: fieldGuide.state() }));
 Events.on("hmp-progression:sync", applySync);
 Events.on("hmp-progression:request", handleRequest);
-Events.on("resourceStop", (name?: string) => { if (!name || name === "hmp-progression") status.state = "stopped"; });
+Events.on("hmp-progression:field-guide", fieldGuide.receive);
+Events.on("fieldGuideCollectionChanged", () => fieldGuide.changed());
+Events.on("fieldGuideChallengeChanged", () => fieldGuide.changed());
+Events.on("resourceStop", (name?: string) => {
+    if (name && name !== "hmp-progression") return;
+    status.state = "stopped";
+    fieldGuide.stop();
+});
 
 console.info("[hmp-progression] client progression and talent reconciler ready");

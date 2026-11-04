@@ -38,4 +38,36 @@ assert.ok(handlers.has("playerDisconnect"));
 assert.ok(handlers.has("playerFastTravelUnlocked"));
 assert.ok(clientHandlers.has("hmp-progression:native-report"));
 assert.ok(clientHandlers.has("hmp-progression:native-result"));
+assert.ok(clientHandlers.has("hmp-progression:field-guide-result"));
+assert.ok(clientHandlers.has("hmp-progression:field-guide-save"));
+
+const clientBundle = path.resolve(__dirname, "..", "dist", "client.js");
+function loadClient(fieldGuide) {
+    delete require.cache[clientBundle];
+    const loaded = { exports: new Map(), handlers: new Map(), emits: [] };
+    global.Exports = { register: (name, value) => loaded.exports.set(name, value) };
+    global.Events = {
+        on: (name, handler) => loaded.handlers.set(name, handler),
+        emitServer: (name, payload) => loaded.emits.push({ name, payload: JSON.parse(payload) }),
+    };
+    if (fieldGuide) global.FieldGuide = fieldGuide;
+    else delete global.FieldGuide;
+    require(clientBundle);
+    return loaded;
+}
+
+// A host without FieldGuide answers the restore as unsupported.
+const older = loadClient(null);
+older.handlers.get("hmp-progression:field-guide")(JSON.stringify({ characterId: 42, token: 1, restore: false, snapshot: null }));
+assert.deepStrictEqual(older.emits, [{ name: "hmp-progression:field-guide-result", payload: { characterId: 42, token: 1, ok: false, unsupported: true } }]);
+assert.strictEqual(older.exports.get("clientStatus")().fieldGuide, "unsupported");
+
+const restored = [];
+const current = loadClient({ ready: () => true, snapshot: () => null, restore: (value) => { restored.push(value); return { ok: true, mismatches: [], needsTravel: false }; } });
+assert.ok(current.handlers.has("fieldGuideCollectionChanged"));
+assert.ok(current.handlers.has("fieldGuideChallengeChanged"));
+current.handlers.get("hmp-progression:field-guide")(JSON.stringify({ characterId: 42, token: 1, restore: true, snapshot: null }));
+assert.deepStrictEqual(restored, [null]);
+assert.strictEqual(current.emits[0].payload.ok, true);
+current.handlers.get("resourceStop")("hmp-progression");
 console.log("hmp-progression bundle contract passed");

@@ -23,6 +23,7 @@ function loadConfig(Hmp: HmpLibServer<HmpProgressionPlayer>, options: { env?: No
         maximumTalentPoints: 100,
         nativeRequestTimeoutMs: 8_000,
         flooFlames: true,
+        fieldGuide: true,
     };
     const loaded = Hmp.config.load<ProgressionConfig & Record<string, unknown>>(env.HMP_PROGRESSION_CONFIG || "data/hmp-progression.json", {
         cwd: options.cwd || process.cwd(), defaults: defaults as ProgressionConfig & Record<string, unknown>,
@@ -39,6 +40,7 @@ function loadConfig(Hmp: HmpLibServer<HmpProgressionPlayer>, options: { env?: No
         maximumTalentPoints: bounded(loaded.maximumTalentPoints, defaults.maximumTalentPoints, 1, 10_000),
         nativeRequestTimeoutMs: bounded(loaded.nativeRequestTimeoutMs, defaults.nativeRequestTimeoutMs, 1_000, 60_000),
         flooFlames: loaded.flooFlames !== false,
+        fieldGuide: loaded.fieldGuide !== false,
     };
 }
 

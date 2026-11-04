@@ -67,6 +67,28 @@ dims the flames lit for the earlier one, so they never cross characters. A flame
 selected is not saved. It needs HogwartsMP `1.11` or newer for `player.setFastTravelUnlocked`; an older
 host logs a warning once and keeps no flames.
 
+## Field Guide
+
+`fieldGuide` (default `true`) keeps each character's Field Guide: its collections (pages, traits, beasts
+and the rest), challenge progress and locks, and the world state that keeps a collected page collected.
+The game holds it on the client, so the server keeps one snapshot per character
+(`hmp_progression_field_guides`):
+
+- When a character loads, the client waits for the game's Field Guide and restores the saved snapshot
+  the way a save load does: nothing is collected, counted, paid or granted again.
+- A character with nothing saved keeps what the game holds if it is the first one loaded in the
+  connection. A later one starts with a clean Field Guide, so progress never passes between characters.
+- Once the client confirms the restore, it gathers changes for two seconds and sends one snapshot, which
+  the server stores for the selected character only. The snapshot is client input: the server checks its
+  shape and refuses one over 512 KiB.
+- A restore that fails keeps the saved snapshot, and nothing is saved until the character loads again.
+
+The restore lands in a world that is already loaded: the Field Guide is right at once, but Revelio pages
+and map icons show the restored state after the next map load, such as entering or leaving a dungeon.
+Changes from the last two seconds before a disconnect or character switch are not saved. It needs
+HogwartsMP `1.11` or newer for `FieldGuide` on the client; an older host logs a warning once and keeps no
+Field Guide progress.
+
 ## Events
 
 - `hmp:progression:changed` after a canonical XP or talent-point mutation.

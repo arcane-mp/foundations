@@ -212,6 +212,9 @@ created test transaction after its state has been inspected.
   earned outside a server reward must not silently become durable Foundations XP.
 - On HogwartsMP `1.11` or newer, find a Floo flame, reconnect, and confirm it is lit again for that
   character. Switch to another character and confirm the flame is dimmed unless that character found it.
+- On HogwartsMP `1.11` or newer, collect a Revelio page, wait a few seconds, reconnect, and confirm the
+  Field Guide still lists it for that character. Switch to a second character and confirm its Field Guide
+  does not; enter and leave a dungeon and confirm the page spot and map icon match the selected character.
 - Report duplicate XP, revision counters that never converge, talent points multiplying on travel,
   failed revocations, purchases recorded after native refusal, or any progression state crossing characters.
 

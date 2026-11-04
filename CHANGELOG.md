@@ -99,6 +99,14 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   character in the same connection dims the earlier one's flames, so they never cross characters. The
   `flooFlames` export lists and sets a character's flames. It defaults to `true`. It needs HogwartsMP
   `1.11` or newer for `player.setFastTravelUnlocked`; an older host ignores it.
+- `hmp-progression` `fieldGuide` keeps each character's Field Guide: its collections (pages, traits,
+  beasts and the rest), challenge progress and the world state that keeps a collected page collected.
+  When a character loads, the client restores its saved snapshot and then sends changes back, which the
+  server checks (shape, and 512 KiB at most) and stores for the selected character only. A character
+  with nothing saved keeps what the game holds if it is the connection's first and starts clean
+  otherwise, so progress never passes between characters. Revelio pages and map icons show a restore
+  after the next map load. It defaults to `true`. It needs HogwartsMP `1.11` or newer for `FieldGuide`;
+  an older host ignores it.
 
 ### Fixed
 
