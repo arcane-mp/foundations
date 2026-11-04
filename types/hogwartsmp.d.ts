@@ -369,6 +369,12 @@ declare global {
         isDead?(): boolean;
         /** Stands a dead player up where they lie, with no reload. False unless dead with no respawn or revive on its way. */
         revive?(options?: { health?: number | "max" }): boolean;
+        /** Starts an activity (kite, fireworks, raincloud, snitch, band, howler, livingbook, cards) on this player for everyone, replacing one under way. HogwartsMP 1.11 or newer. */
+        startActivity?(id: string, variant?: string): void;
+        /** Ends this player's activity: its companion goes off and the outro plays. */
+        finishActivity?(): void;
+        /** This player's activity and variant (`""` for none) as their client last reported it, or null. */
+        getActivity?(): { id: string; variant: string } | null;
     }
 
     /** One point of a movement path, at a player's origin height (as `player.position`). */

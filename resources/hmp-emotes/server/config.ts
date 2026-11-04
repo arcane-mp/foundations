@@ -1,9 +1,11 @@
 import normalizeModule = require("../shared/normalize");
+import activitiesModule = require("../shared/activities");
 import type { HmpLibServer } from "../../hmp-lib/types";
 import type { HmpEmotePlayer } from "../types";
 import type { EmoteConfig } from "./internal";
 
 const { normalizeConfigured } = normalizeModule;
+const { ACTIVITY_IDS, activityIds } = activitiesModule;
 
 function loadConfig(Hmp: HmpLibServer<HmpEmotePlayer>, options: { env?: NodeJS.ProcessEnv; cwd?: string } = {}): EmoteConfig {
     const env = options.env || process.env;
@@ -19,6 +21,7 @@ function loadConfig(Hmp: HmpLibServer<HmpEmotePlayer>, options: { env?: NodeJS.P
             popcorn: "/Game/Animation/Human/Stations/Sitting/STUF_STN_SIT_Bench_Eat_Box_v01_anm.STUF_STN_SIT_Bench_Eat_Box_v01_anm",
             apple: "/Game/Animation/Human/Stations/Sitting/HUF_STN_SIT_Bench_Idle_EatingApple_ANM.HUF_STN_SIT_Bench_Idle_EatingApple_ANM",
         },
+        activities: [...ACTIVITY_IDS],
     };
     const loaded = Hmp.config.load<EmoteConfig & Record<string, unknown>>(env.HMP_EMOTES_CONFIG || "data/hmp-emotes.json", {
         cwd: options.cwd || process.cwd(), defaults: defaults as EmoteConfig & Record<string, unknown>,
@@ -44,6 +47,7 @@ function loadConfig(Hmp: HmpLibServer<HmpEmotePlayer>, options: { env?: NodeJS.P
     if (!loaded.ui.url.startsWith("fw://resources/") && !loaded.ui.url.startsWith("https://")) throw new TypeError("hmp-emotes ui.url must be a resource URL or HTTPS URL");
     if (!loaded.aliases || typeof loaded.aliases !== "object" || Array.isArray(loaded.aliases)) throw new TypeError("hmp-emotes aliases must be an object");
     for (const [name, definition] of Object.entries(loaded.aliases)) normalizeConfigured(name, definition);
+    loaded.activities = activityIds(loaded.activities);
     return loaded;
 }
 

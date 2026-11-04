@@ -41,6 +41,9 @@ declare const LocalPlayer: {
     stopPlayerInput(): boolean | null;
     restorePlayerInput(): boolean | null;
     emotePreview(options?: PreviewOptions): PreviewState;
+    /** Missing on a host before HogwartsMP 1.11. */
+    startActivity?(id: string, variant?: string): boolean;
+    finishActivity?(): boolean;
 };
 
 const DEFAULT_VIEW_URL = "fw://resources/hmp-emotes/dist/menu.html";
@@ -54,6 +57,9 @@ let previewOn = true;
 let controls: HmpControlLease | null = null;
 let placing: EmoteRow | null = null;
 let stopped = false;
+// A host before HogwartsMP 1.11 has no player activities, so the menu offers none.
+const canStartActivities = typeof LocalPlayer.startActivity === "function";
+let activities: Array<{ id: string; variants: string[] }> = [];
 
 function parse(raw: unknown): Record<string, unknown> {
     if (typeof raw === "string") { try { return JSON.parse(raw) as Record<string, unknown>; } catch (_) { return {}; } }
@@ -104,6 +110,25 @@ function play(row: EmoteRow): boolean {
     return LocalPlayer.playClip(row.path, { loop: row.loop !== false, hold: row.hold !== false });
 }
 
+function activitiesOf(raw: unknown): Array<{ id: string; variants: string[] }> {
+    const list = parse(raw).activities;
+    if (!Array.isArray(list)) return [];
+    return list.filter((entry) => entry && typeof entry.id === "string")
+        .map((entry) => ({ id: String(entry.id), variants: Array.isArray(entry.variants) ? entry.variants.map(String) : [] }));
+}
+
+function pushActivities(): void {
+    if (view >= 0 && pageReady) Web.emit(view, "em:activities", { activities: canStartActivities ? activities : [] });
+}
+
+function startActivity(raw: unknown): void {
+    const value = parse(raw);
+    const offered = activities.find((entry) => entry.id === value.id);
+    if (!offered || !canStartActivities) return;
+    const variant = typeof value.variant === "string" && offered.variants.includes(value.variant) ? value.variant : undefined;
+    if (!LocalPlayer.startActivity!(offered.id, variant)) reply(`could not start ${offered.id} while dead, mounted or loading`);
+}
+
 function lockControls(enable: boolean): void {
     if (enable && !controls) controls = Input.controls.acquire({ resource: "hmp-emotes", id: "menu" });
     else if (!enable && controls) { controls.release(); controls = null; }
@@ -115,6 +140,7 @@ function wire(): void {
         Web.emit(view, "configure", { contract: UI_CONTRACT });
         server("hmp-emotes:favorites-request");
         server("hmp-emotes:aliases-request");
+        pushActivities();
         if (visible) Web.emit(view, "em:focus", {});
     });
     Web.on(view, "play", (raw: unknown) => {
@@ -152,6 +178,8 @@ function wire(): void {
         if (!row) return;
         server("hmp-emotes:alias-set", { ...row, alias: String(parse(raw).alias || "").trim().toLowerCase() });
     });
+    Web.on(view, "activity", startActivity);
+    Web.on(view, "activityFinish", () => { if (canStartActivities) LocalPlayer.finishActivity?.(); });
     Web.on(view, "close", () => hideMenu());
 }
 
@@ -253,6 +281,7 @@ Events.on("hmp-emotes:aliases", (raw: unknown) => {
         ...(typeof value.browseUnaliased === "boolean" ? { browseUnaliased: value.browseUnaliased } : {}),
     });
 });
+Events.on("hmp-emotes:activities", (raw: unknown) => { activities = activitiesOf(raw); pushActivities(); });
 Events.on("hmp-emotes:play-ability", (raw: unknown) => {
     const value = parse(raw);
     const path = String(value.path || "");

@@ -23,10 +23,10 @@ const core = Imports.get<HmpCore<HmpEmotePlayer>>("hmp-core");
 const logger = Hmp.logger.create("hmp-emotes");
 const config = loadConfig(Hmp);
 const repository = createRepository(database);
-const service = createEmoteService({ database, repository, core, config, migrations, players: () => PlayerManager.getAll(), events: Events });
+const service = createEmoteService({ database, repository, core, config, migrations, players: () => PlayerManager.getAll(), events: Events, warn: (message) => logger.warn(message) });
 const actions = Hmp.rateLimit.create<number>({ limit: 10, windowMs: 2000 });
 
-for (const name of ["emotes", "aliases", "favorites", "ui", "status"] as const) Exports.register(name, service[name]);
+for (const name of ["emotes", "aliases", "favorites", "ui", "activities", "status"] as const) Exports.register(name, service[name]);
 
 function run(player: HmpEmotePlayer, work: () => Promise<unknown> | unknown): void {
     Promise.resolve().then(work).catch((error) => {
@@ -106,7 +106,7 @@ const router = Hmp.command.createRouter({ logger });
 router.register(config.command, {
     aliases: ["e", "emotes", "emotemenu"],
     description: "Play, browse, or stop a server-curated emote.",
-    usage: `/${config.command} <name|menu|stop|list>`,
+    usage: `/${config.command} <name|activity [variant]|menu|stop|list>`,
 }, async (context) => {
     const invoked = context.invokedAs.toLowerCase();
     let action = String(context.args[0] || "list").toLowerCase();
@@ -117,10 +117,20 @@ router.register(config.command, {
     if (action === "list") {
         const names = service.emotes.list().map((entry) => entry.name);
         context.reply(names.length ? `[emotes] ${names.length} emotes: ${names.join(", ")}` : "[emotes] no emotes are configured");
+        const offered = service.activities.list().map((entry) => entry.id);
+        if (offered.length && typeof context.player.startActivity === "function") context.reply(`[emotes] activities: ${offered.join(", ")}; start one with /${config.command} <activity> [variant]`);
         context.reply(`[emotes] play with /${invoked === "e" ? "e" : config.command} <name>, browse with /${config.command} menu, stop with /${config.command} stop`);
         return;
     }
-    if (!await service.emotes.play(context.player, action)) context.reply(`[emotes] no emote named '${action}'`);
+    if (await service.emotes.play(context.player, action)) return;
+    // An emote alias of the same name wins over an activity.
+    const activity = service.activities.list().find((entry) => entry.id === action);
+    if (!activity) { context.reply(`[emotes] no emote named '${action}'`); return; }
+    const variant = context.args[1] ? String(context.args[1]).toLowerCase() : undefined;
+    if (service.activities.start(context.player, action, variant)) return;
+    if (typeof context.player.startActivity !== "function") context.reply("[emotes] activities need HogwartsMP 1.11 or newer");
+    else if (variant && !activity.variants.includes(variant)) context.reply(activity.variants.length ? `[emotes] ${action} takes ${activity.variants.join(", ")}` : `[emotes] ${action} takes no variant`);
+    else context.reply(`[emotes] could not start ${action}`);
 });
 
 const editorGuard = async ({ player }: { player: HmpEmotePlayer }) => {

@@ -125,6 +125,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   `hmp-duels`'s own, and however the duel ends (a knock-out, a forfeit, a death, a disconnect or
   `hmp-duels` stopping) both can dodge again. It defaults to `true`, so duelists dodge as before. It
   needs HogwartsMP `1.11` or newer for `LocalPlayer.setDodgeEnabled`; an older host ignores it.
+- `hmp-emotes` offers the game's own player activities, emotes with a companion the game animates: a
+  kite, fireworks, a rain cloud, the Golden Snitch, the One Man Band, a Howler, a living book and a deck
+  of cards, which every player sees. Players start one with `/e <activity> [variant]` (`/e kite
+  ravenclaw`) or from the emote menu's new Activities tab, and end it with `/e stop` or the tab's Finish;
+  the `activities` export does the same for other resources. These are not `hmp-activities` lobbies. The
+  `activities` config lists the ones offered, all eight by default. It needs HogwartsMP `1.11` or newer
+  for `player.startActivity` and `LocalPlayer.startActivity`; an older host ignores it.
 
 ### Fixed
 

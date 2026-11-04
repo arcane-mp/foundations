@@ -1,6 +1,6 @@
 import type { HmpCore } from "../../hmp-core/types";
 import type { HmpMySQL, HmpMySQLMigration } from "../../hmp-mysql/types";
-import type { HmpEmoteAliasRecord, HmpEmoteDefinition, HmpEmotePlayer, HmpEmotesServer } from "../types";
+import type { HmpEmoteActivityId, HmpEmoteAliasRecord, HmpEmoteDefinition, HmpEmotePlayer, HmpEmotesServer } from "../types";
 
 export interface EmoteConfig {
     command: string;
@@ -13,6 +13,8 @@ export interface EmoteConfig {
     editorGroups: Array<{ key: string; minimumGrade?: number }>;
     ui: { url: string };
     aliases: Record<string, string | Partial<HmpEmoteDefinition>>;
+    /** The player activities offered through /emote and the menu; [] offers none. */
+    activities: HmpEmoteActivityId[];
 }
 
 export interface PersistedAlias extends HmpEmoteAliasRecord {
@@ -34,6 +36,7 @@ export interface EmoteDependencies<P extends HmpEmotePlayer> {
     migrations: HmpMySQLMigration[];
     players(): P[];
     events: { emit(name: string, ...args: unknown[]): unknown };
+    warn?(message: string): void;
     now?: () => number;
 }
 

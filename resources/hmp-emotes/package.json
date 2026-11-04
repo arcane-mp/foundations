@@ -28,7 +28,7 @@
       "dist/menu.html",
       "dist/emote_assets.json"
     ],
-    "exports": ["emotes", "aliases", "favorites", "ui", "status"],
+    "exports": ["emotes", "aliases", "favorites", "ui", "activities", "status"],
     "resourceDependencies": [
       { "name": "hmp-mysql", "version": "0.10.0" },
       { "name": "hmp-lib", "version": "0.10.0" },

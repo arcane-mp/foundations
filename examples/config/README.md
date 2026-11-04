@@ -29,7 +29,8 @@ older host switches them off instead, with a warning.
 `hmp-beasts` includes the `/beasts` menu command and the release policy: released beasts come back into the
 world, not catchable again.
 `hmp-npcs` includes total and per-resource limits for NPCs managed through the Foundation service.
-`hmp-emotes` includes one for curated aliases, editor groups, the `allowAll` catalog policy, and renderer selection.
+`hmp-emotes` includes one for curated aliases, editor groups, the `allowAll` catalog policy, renderer selection,
+and the player activities offered (kite, fireworks and the rest; not `hmp-activities` lobbies).
 `hmp-audio` includes one for Wwise aliases, positional range, handle limits, closed-test commands, and the
 game's own dialogue, left to the host (`dialogue: {}`).
 `hmp-blips` includes one for marker lifetimes, player visibility, native tint/scale, the game's own map icons
@@ -70,7 +71,8 @@ Review at minimum:
 - the physical-door default, group exceptions, and whether closed-test door commands remain enabled;
 - the starting environment and whether native mount boundaries, ambient population, and encounters are enabled;
 - the Hogwarts Express timetable and stops, or `enabled: false` when another script runs the train;
-- which emotes players may browse, which groups may curate aliases, and the emote UI URL;
+- which emotes players may browse, which groups may curate aliases, the emote UI URL, and which player
+  activities `/e` offers;
 - audio aliases, positional delivery range, handle limits, and whether `/audio` testing is enabled;
 - marker TTL/limits, whether every remote player is shown, the player-blip tint/scale settings, and which of
   the game's own map icons are hidden or retitled;

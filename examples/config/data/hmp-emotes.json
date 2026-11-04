@@ -16,5 +16,15 @@
   "aliases": {
     "popcorn": "/Game/Animation/Human/Stations/Sitting/STUF_STN_SIT_Bench_Eat_Box_v01_anm.STUF_STN_SIT_Bench_Eat_Box_v01_anm",
     "apple": "/Game/Animation/Human/Stations/Sitting/HUF_STN_SIT_Bench_Idle_EatingApple_ANM.HUF_STN_SIT_Bench_Idle_EatingApple_ANM"
-  }
+  },
+  "activities": [
+    "kite",
+    "fireworks",
+    "raincloud",
+    "snitch",
+    "band",
+    "howler",
+    "livingbook",
+    "cards"
+  ]
 }

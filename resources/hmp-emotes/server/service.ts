@@ -1,8 +1,10 @@
 import normalizeModule = require("../shared/normalize");
-import type { HmpEmoteAliasRecord, HmpEmoteCandidate, HmpEmoteDefinition, HmpEmotePlayer } from "../types";
+import activitiesModule = require("../shared/activities");
+import type { HmpEmoteActivity, HmpEmoteAliasRecord, HmpEmoteCandidate, HmpEmoteDefinition, HmpEmotePlayer } from "../types";
 import type { EmoteDependencies, EmoteService, PersistedAlias } from "./internal";
 
 const { nameOf, pathOf, normalizeDefinition, normalizeConfigured } = normalizeModule;
+const { ACTIVITIES, activityOf } = activitiesModule;
 const FAVORITES_KEY = "hmp-emotes:favorites";
 const UI_CONTRACT = "hmp.emotes.ui/v1";
 
@@ -36,6 +38,7 @@ function createEmoteService<P extends HmpEmotePlayer>(dependencies: EmoteDepende
     const openMenus = new Set<number>();
     let state: ReturnType<EmoteService<P>["status"]>["state"] = "starting";
     let lastError = "";
+    let warnedActivities = false;
 
     for (const [name, raw] of Object.entries(config.aliases)) {
         const definition = normalizeConfigured(name, raw);
@@ -249,6 +252,41 @@ function createEmoteService<P extends HmpEmotePlayer>(dependencies: EmoteDepende
         async sync(player: P) { await Promise.all([pushAliases(player), pushFavorites(player)]); return true; },
     });
 
+    // A host before HogwartsMP 1.11 has no player activities: nothing is offered and nothing starts.
+    function hostActivities(player: P): boolean {
+        if (typeof player.startActivity === "function") return true;
+        if (config.activities.length && !warnedActivities) {
+            dependencies.warn?.("Player activities need HogwartsMP 1.11 or newer for player.startActivity; none are offered");
+            warnedActivities = true;
+        }
+        return false;
+    }
+
+    function offeredActivities(): HmpEmoteActivity[] {
+        return ACTIVITIES.filter((entry) => config.activities.includes(entry.id)).map((entry) => ({ id: entry.id, variants: [...entry.variants] }));
+    }
+
+    const activities = Object.freeze({
+        list: offeredActivities,
+        start(player: P, rawId: string, rawVariant?: string) {
+            const activity = activityOf(rawId);
+            if (!config.enabled || !activity || !config.activities.includes(activity.id) || !hostActivities(player)) return false;
+            const variant = rawVariant === undefined || rawVariant === "" ? undefined : String(rawVariant).trim().toLowerCase();
+            if (variant !== undefined && !activity.variants.includes(variant)) return false;
+            try { player.startActivity!(activity.id, variant); return true; }
+            catch (_) { return false; }
+        },
+        finish(player: P) {
+            if (typeof player.finishActivity !== "function") return false;
+            try { player.finishActivity(); return true; }
+            catch (_) { return false; }
+        },
+        get(player: P) {
+            try { return typeof player.getActivity === "function" ? player.getActivity() : null; }
+            catch (_) { return null; }
+        },
+    });
+
     function removeForResource(resource: string): number {
         let removed = 0;
         for (const entry of [...registered.values()]) if (entry.resource === resource && aliases.unregister(entry.name, resource)) removed++;
@@ -259,11 +297,13 @@ function createEmoteService<P extends HmpEmotePlayer>(dependencies: EmoteDepende
         emotes, aliases,
         favorites: Object.freeze({ list: favoriteList, toggle: favoriteToggle }),
         ui,
+        activities,
         status: () => ({ state, lastError, aliases: effectiveMap().size, configuredAliases: configured.size, registeredAliases: registered.size, persistedOverrides: persisted.size, readyClients: clients.size, openMenus: openMenus.size, uptimeMs: now() - startedAt }),
         ready: () => startPromise,
         async onClientReady(player: P) {
             clients.add(player.id);
             emit(player, "hmp-emotes:configure", { contract: UI_CONTRACT, url: config.ui.url });
+            emit(player, "hmp-emotes:activities", { activities: config.enabled && hostActivities(player) ? offeredActivities() : [] });
             await ui.sync(player);
             return true;
         },

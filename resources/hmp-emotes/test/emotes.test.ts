@@ -1,10 +1,12 @@
 import assert = require("node:assert");
 import normalizeModule = require("../shared/normalize");
 import serviceModule = require("../server/service");
-import type { HmpEmoteAliasRecord } from "../types";
+import activitiesModule = require("../shared/activities");
+import type { HmpEmoteAliasRecord, HmpEmotePlayer } from "../types";
 
 const { normalizeDefinition, normalizeConfigured } = normalizeModule;
 const { createEmoteService, FAVORITES_KEY, favoritePath, suggestedAlias } = serviceModule;
+const { activityIds } = activitiesModule;
 
 async function run(): Promise<void> {
     assert.deepStrictEqual(normalizeConfigured("Wave", { path: "/Game/Wave.Wave", kind: "ability", channel: "PartialBody" }), {
@@ -42,6 +44,7 @@ async function run(): Promise<void> {
             apple: "/Game/Apple.Apple",
             popcorn: "/Game/Popcorn.Popcorn",
         },
+        activities: [],
     };
     const service = createEmoteService({
         database: {} as never, repository: repository as never, core: core as never, config,
@@ -85,4 +88,63 @@ async function run(): Promise<void> {
     assert.strictEqual(service.status().state, "stopped");
 }
 
-run().then(() => console.log("hmp-emotes tests passed"));
+async function playerActivities(): Promise<void> {
+    assert.deepStrictEqual(activityIds(["Kite", "cards", "kite"]), ["kite", "cards"]);
+    assert.throws(() => activityIds(["quidditch"]), /not one of kite, fireworks/);
+    assert.throws(() => activityIds("kite"), /must be an array/);
+
+    const warnings: string[] = [];
+    const started: unknown[][] = [];
+    const emitted: Array<{ name: string; payload: unknown }> = [];
+    let current: { id: string; variant: string } | null = null;
+    const player = {
+        id: 3, nickname: "Kite Flier", sendChat() {},
+        emit(name: string, payload?: unknown) { emitted.push({ name, payload: JSON.parse(String(payload)) }); },
+        startActivity(id: string, variant?: string) { started.push([id, variant]); current = { id, variant: variant || "" }; },
+        finishActivity() { started.push(["finish"]); current = null; },
+        getActivity: () => current,
+    };
+    const older = { id: 4, nickname: "Older", sendChat() {}, emit(name: string, payload?: unknown) { emitted.push({ name, payload: JSON.parse(String(payload)) }); } };
+    const service = createEmoteService<HmpEmotePlayer>({
+        database: {} as never,
+        repository: { start: async () => {}, list: async () => [], put: async () => {} } as never,
+        core: { groups: { has: async () => false }, accounts: { getByPlayer: () => null } } as never,
+        config: {
+            command: "emote", enabled: true, allowAll: false, maxFavorites: 2, maxAliases: 10,
+            editorGroups: [], ui: { url: "fw://resources/hmp-emotes/dist/menu.html" }, aliases: {},
+            activities: ["kite", "fireworks", "howler"],
+        },
+        migrations: [], players: () => [player], events: { emit() {} }, warn: (message) => warnings.push(message), now: () => 100,
+    });
+    await service.ready();
+
+    // Only the configured activities are offered, each with the variants the host takes.
+    assert.deepStrictEqual(service.activities.list().map((entry) => entry.id), ["kite", "fireworks", "howler"]);
+    assert.deepStrictEqual(service.activities.list().find((entry) => entry.id === "howler")?.variants, ["female", "male"]);
+    await service.onClientReady(player);
+    assert.deepStrictEqual(emitted.find((entry) => entry.name === "hmp-emotes:activities")?.payload, { activities: service.activities.list() });
+
+    assert.strictEqual(service.activities.start(player, "kite", "Ravenclaw"), true);
+    assert.strictEqual(service.activities.start(player, "fireworks"), true);
+    assert.deepStrictEqual(started, [["kite", "ravenclaw"], ["fireworks", undefined]]);
+    assert.strictEqual(service.activities.start(player, "kite", "hippogriff"), false, "an unknown variant");
+    assert.strictEqual(service.activities.start(player, "snitch"), false, "not offered here");
+    assert.deepStrictEqual(service.activities.get(player), { id: "fireworks", variant: "" });
+    assert.strictEqual(service.activities.finish(player), true);
+    assert.strictEqual(service.activities.get(player), null);
+    assert.strictEqual(started.length, 3);
+    assert.deepStrictEqual(warnings, []);
+
+    // A host without player activities offers none and starts none, and the server says so once.
+    emitted.length = 0;
+    await service.onClientReady(older);
+    assert.deepStrictEqual(emitted.find((entry) => entry.name === "hmp-emotes:activities")?.payload, { activities: [] });
+    assert.strictEqual(service.activities.start(older, "kite"), false);
+    assert.strictEqual(service.activities.finish(older), false);
+    assert.strictEqual(service.activities.get(older), null);
+    assert.strictEqual(warnings.length, 1);
+    assert.match(warnings[0], /1\.11.*player\.startActivity/);
+    service.stop();
+}
+
+run().then(playerActivities).then(() => console.log("hmp-emotes tests passed"));

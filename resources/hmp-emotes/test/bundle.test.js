@@ -47,7 +47,8 @@ assert.match(menu, /Click to set the server-level \/e alias/);
 const menuScript = menu.match(/<script>([\s\S]*)<\/script>/)?.[1];
 assert.ok(menuScript);
 new Function(menuScript);
-assert.deepStrictEqual([...serverExports.keys()], ["emotes", "aliases", "favorites", "ui", "status"]);
+assert.deepStrictEqual([...serverExports.keys()], ["emotes", "aliases", "favorites", "ui", "activities", "status"]);
+assert.match(menu, /em:activities/);
 assert.ok(serverHandlers.has("client:hmp-emotes:ready"));
 assert.ok(serverHandlers.has("client:hmp-emotes:alias-set"));
 assert.ok(serverHandlers.has("client:hmp-emotes:allow-toggle"));
@@ -56,6 +57,7 @@ assert.ok(commands.has("emote"));
 const clientExports = new Map();
 const clientHandlers = new Map();
 const webHandlers = new Map();
+const webEmits = [];
 const clientEmits = [];
 const shortcuts = [];
 global.Exports = { register: (name, value) => clientExports.set(name, value) };
@@ -77,15 +79,51 @@ global.LocalPlayer = {
     emotePreview: () => ({ ok: true, visible: false, ready: true, placeable: false, committed: false, anchored: false, status: "" }),
 };
 global.Web = {
-    createView: () => 2, on: (_view, name, handler) => webHandlers.set(name, handler), emit() {}, showView() {}, focusView() {}, hideView() {}, destroyView() {},
+    createView: () => 2, on: (_view, name, handler) => webHandlers.set(name, handler), emit: (_view, name, payload) => webEmits.push({ name, payload }),
+    showView() {}, focusView() {}, hideView() {}, destroyView() {},
 };
 global.Game = { notify() {} };
-require(path.resolve(__dirname, "..", "dist", "client.js"));
+const clientBundle = path.resolve(__dirname, "..", "dist", "client.js");
+require(clientBundle);
 assert.ok(clientHandlers.has("hmp-emotes:open"));
 assert.ok(clientHandlers.has("hmp-emotes:play"));
 clientHandlers.get("hmp-emotes:open")();
 assert.ok(webHandlers.has("allowToggle"));
 assert.strictEqual(shortcuts.length, 5);
 assert.deepStrictEqual(clientEmits.map((entry) => entry.name), ["hmp-emotes:ready"]);
+// An older host has no player activities: the menu is offered none.
+const offered = JSON.stringify({ activities: [{ id: "kite", variants: ["ravenclaw"] }, { id: "cards", variants: [] }] });
+clientHandlers.get("hmp-emotes:activities")(offered);
+webHandlers.get("ready")();
+assert.deepStrictEqual(webEmits.filter((entry) => entry.name === "em:activities").at(-1).payload, { activities: [] });
 clientHandlers.get("resourceStop")("hmp-emotes");
-console.log("hmp-emotes bundle contract passed");
+
+// A host with them passes the server's offer to the menu and starts what the page picks.
+const activityCalls = [];
+global.LocalPlayer = { ...global.LocalPlayer, startActivity: (id, variant) => { activityCalls.push([id, variant]); return true; }, finishActivity: () => { activityCalls.push(["finish"]); return true; } };
+delete require.cache[clientBundle];
+require(clientBundle);
+clientHandlers.get("hmp-emotes:open")();
+webHandlers.get("ready")();
+clientHandlers.get("hmp-emotes:activities")(offered);
+assert.deepStrictEqual(webEmits.at(-1), { name: "em:activities", payload: JSON.parse(offered) });
+webHandlers.get("activity")(JSON.stringify({ id: "kite", variant: "ravenclaw" }));
+webHandlers.get("activity")(JSON.stringify({ id: "cards", variant: "" }));
+webHandlers.get("activity")(JSON.stringify({ id: "snitch" }));
+webHandlers.get("activityFinish")();
+assert.deepStrictEqual(activityCalls, [["kite", "ravenclaw"], ["cards", undefined], ["finish"]]);
+clientHandlers.get("resourceStop")("hmp-emotes");
+
+// /e <activity> [variant] starts it on the server's player; an older host's player is told what it needs.
+void (async () => {
+    const started = [], replies = [];
+    const reply = (text) => replies.push(text);
+    const flier = { ...player, startActivity: (id, variant) => started.push([id, variant]) };
+    await commands.get("emote").handler({ player: flier, args: ["kite", "Slytherin"], invokedAs: "e", reply });
+    await commands.get("emote").handler({ player: flier, args: ["howler", "banshee"], invokedAs: "e", reply });
+    assert.deepStrictEqual(started, [["kite", "slytherin"]]);
+    assert.match(replies.at(-1), /howler takes female, male/);
+    await commands.get("emote").handler({ player, args: ["kite"], invokedAs: "e", reply });
+    assert.match(replies.at(-1), /1\.11/);
+    console.log("hmp-emotes bundle contract passed");
+})().catch((error) => { console.error(error); process.exit(1); });

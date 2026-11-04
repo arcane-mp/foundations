@@ -1,5 +1,7 @@
 export type HmpEmoteKind = "pose" | "ability";
 export type HmpEmoteChannel = "FullBody" | "PartialBody";
+/** The game's own pastimes the host plays on a player, each with a companion it animates (`player.startActivity`). */
+export type HmpEmoteActivityId = "kite" | "fireworks" | "raincloud" | "snitch" | "band" | "howler" | "livingbook" | "cards";
 
 export interface HmpEmotePlayer {
     id: number;
@@ -7,6 +9,10 @@ export interface HmpEmotePlayer {
     connected?: boolean;
     emit(eventName: string, payload?: unknown): void;
     sendChat?(message: string): void;
+    /** Missing on a host before HogwartsMP 1.11. */
+    startActivity?(id: string, variant?: string): void;
+    finishActivity?(): void;
+    getActivity?(): { id: string; variant: string } | null;
 }
 
 export interface HmpEmoteDefinition {
@@ -53,6 +59,23 @@ export interface HmpEmoteFavoritesApi<P = HmpEmotePlayer> {
     toggle(player: P, path: string): Promise<string[]>;
 }
 
+/** A player activity and the variants it takes; none means the host picks. Not an `hmp-activities` lobby. */
+export interface HmpEmoteActivity {
+    id: HmpEmoteActivityId;
+    variants: string[];
+}
+
+export interface HmpEmoteActivitiesApi<P = HmpEmotePlayer> {
+    /** The activities this server offers, from the `activities` config. */
+    list(): HmpEmoteActivity[];
+    /** Starts one on the player, replacing one under way; false when it is not offered, the variant is unknown or the host has none. */
+    start(player: P, id: string, variant?: string): boolean;
+    /** Ends the player's activity, its companion leaving and the outro playing; false on a host without activities. */
+    finish(player: P): boolean;
+    /** The player's activity as their client last reported it, or null. */
+    get(player: P): { id: string; variant: string } | null;
+}
+
 export interface HmpEmoteUiApi<P = HmpEmotePlayer> {
     open(player: P): Promise<boolean>;
     close(player: P): boolean;
@@ -76,5 +99,6 @@ export interface HmpEmotesServer<P = HmpEmotePlayer> {
     aliases: HmpEmoteAliasesApi<P>;
     favorites: HmpEmoteFavoritesApi<P>;
     ui: HmpEmoteUiApi<P>;
+    activities: HmpEmoteActivitiesApi<P>;
     status(): HmpEmotesStatus;
 }

@@ -64,12 +64,45 @@ Environment overrides are `HMP_EMOTES_CONFIG`, `HMP_EMOTES_COMMAND`, `HMP_EMOTES
 `HMP_EMOTES_ALLOW_ALL`, and `HMP_EMOTES_UI_URL`. `HMP_EMOTES_BROWSE_UNALIASED` and the equivalent
 configuration property remain accepted as compatibility names for `allowAll`.
 
+## Player activities
+
+The host also plays the game's own pastimes on a player, each with a companion it animates: a kite on
+its rope, fireworks from the wand, a rain cloud overhead, a Golden Snitch, the One Man Band, a Howler, a
+living book and a self-shuffling deck of cards. Every player sees them, including players who arrive later.
+These are not `hmp-activities` lobbies; they are emotes with a companion, so `hmp-emotes` offers them.
+
+| Activity | Variants |
+|---|---|
+| `kite` | `gryffindor`, `hufflepuff`, `ravenclaw`, `slytherin`, `kelpie`, `occamy`, `phoenix`, `swoopingevil` (default: the player's house) |
+| `fireworks` | none |
+| `raincloud` | `rain`, `snow` (default: snow in winter) |
+| `snitch` | none |
+| `band` | none |
+| `howler` | `female`, `male` (default: either); it bursts and ends itself once it has had its say |
+| `livingbook` | `fireflies`, `snow`, `leaves`, `runes`, `constellations`, `ghost`, `storm`, `pranks`, `dragons` |
+| `cards` | none |
+
+Players start one with `/e <activity> [variant]` or from the menu's Activities tab, and end it with
+`/e stop`, the tab's Finish, walking away or playing an emote. An emote alias with an activity's name wins
+over the activity. The `activities` config lists the ones offered, all eight by default; `[]` offers none:
+
+```json
+{
+  "activities": ["kite", "fireworks", "snitch"]
+}
+```
+
+Player activities need HogwartsMP `1.11` or newer for `player.startActivity` and
+`LocalPlayer.startActivity`. On an older host none are offered or started, the command says what it
+needs, and the server logs one warning.
+
 ## Commands
 
 - `/e <name>`, `/emote <name>` plays a named emote.
+- `/e <activity> [variant]` starts a player activity, such as `/e kite ravenclaw`.
 - `/e m`, `/emote menu`, or `/emotemenu` opens the picker.
-- `/e c`, `/emote stop` releases the current emote and any placement anchor.
-- `/emotes` lists server-curated names.
+- `/e c`, `/emote stop` releases the current emote, activity and any placement anchor.
+- `/emotes` lists server-curated names and the activities offered.
 - `/playability` is an editor-only diagnostic.
 
 ## Server API
@@ -78,6 +111,7 @@ configuration property remain accepted as compatibility names for `allowAll`.
 - `aliases.register/unregister/list/get/set/allow/deny/hide/clearPath`
 - `favorites.list/toggle`
 - `ui.open/close/sync`
+- `activities.list/start/finish/get`
 - `status()`
 
 Runtime registrations require a `resource` owner and are removed when that resource stops. Database
@@ -88,9 +122,10 @@ overrides intentionally remain because they represent server-owner curation.
 Arcanum is the default renderer. Set `ui.url` to another resource URL or HTTPS URL to replace the entire
 picker. The client validates and announces contract `hmp.emotes.ui/v1`.
 
-Native-to-page events are `configure`, `em:focus`, `em:favs`, `em:aliases`, and `em:dump`. Page-to-native
-events are `ready`, `play`, `stop`, `preview`, `previewTune`, `previewDump`, `previewToggle`, `place`,
-`favToggle`, `aliasSet`, and `close`. A replacement may ship its own curated catalog instead of the large
+Native-to-page events are `configure`, `em:focus`, `em:favs`, `em:aliases`, `em:activities`, and `em:dump`.
+Page-to-native events are `ready`, `play`, `stop`, `preview`, `previewTune`, `previewDump`, `previewToggle`,
+`place`, `favToggle`, `aliasSet`, `activity`, `activityFinish`, and `close`. A replacement that ignores
+`em:activities` simply offers no activities. A replacement may ship its own curated catalog instead of the large
 discovery asset file.
 
 Placement suppresses pawn input while preserving camera look and anchors the character after committing.
