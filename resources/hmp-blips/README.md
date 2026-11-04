@@ -172,12 +172,38 @@ unless a resource asks.
 Waypoints need HogwartsMP `1.10` or newer for `Blips.waypoint`. On an older host clients report none, so
 `waypoints.get()` is null and a share shows nothing.
 
+## The game's own map icons
+
+`nativeIcons` in the config hides the game's own icons (shops, Floo Flames, collectibles, quests...) on the
+map and the minimap, and retitles their tooltips, for every player:
+
+```json
+"nativeIcons": {
+    "hide": ["treasurechest", "demiguise"],
+    "labels": {
+        "HM_JPippensPotions": { "title": "Apothecary", "description": "Run by the Potions club." }
+    }
+}
+```
+
+A `hide` entry is a category, such as `"fasttravel"` or `"locationshogsmeade"`, or else one icon's id; case
+doesn't matter, and icons that stream in later are hidden too. An id rule beats a category rule. `labels`
+gives an icon id a new tooltip `title`; `description` replaces the game's, `""` hides it and leaving it out
+keeps it. The client's `MapIcons.categories()` and `MapIcons.list()` name every category and icon.
+
+Each client applies it as `hmp-blips`'s own rules when it joins, and they go when `hmp-blips` stops. Script
+markers are never affected. Nothing is hidden or retitled by default.
+
+The game's own icons need HogwartsMP `1.11` or newer for `MapIcons`. An older host leaves them as they are,
+and each client logs one warning when the config asks for something.
+
 ## Configuration
 
 Copy `examples/config/data/hmp-blips.json` into the server's `data` directory. It controls:
 
 - `defaultTtl`, `maxTtl`, and `maxMarkersPerResource`;
 - `showAllPlayers`, `houseTint`, `playerBlipScale`, and `hideBaseIcon`;
+- `nativeIcons` for the game's own map icons;
 - `enableCommands` and `command` for the private closed-test command.
 
 Environment overrides are `HMP_BLIPS_CONFIG`, `HMP_BLIPS_DEFAULT_TTL`, `HMP_BLIPS_MAX_TTL`,
@@ -205,7 +231,7 @@ Style dumps, memory probes, global recoloring, and other `blips-dev` commands ar
 ## Client ownership
 
 The client bundle is intentionally a mirror rather than a public write API. It applies full replay,
-incremental set/remove, pulse, player visibility, and color messages to the native `Blips` builtin, and
-reports the player's own map waypoint back.
-On shutdown it clears script markers and restores normal all-player tracking, house tint, scale, and
-base-icon visibility so hot reload cannot strand stale UI state.
+incremental set/remove, pulse, player visibility, and color messages to the native `Blips` builtin and
+the `nativeIcons` config to `MapIcons`, and reports the player's own map waypoint back.
+On shutdown it clears script markers, drops its native icon rules and labels, and restores normal
+all-player tracking, house tint, scale, and base-icon visibility so hot reload cannot strand stale UI state.

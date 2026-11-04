@@ -14,6 +14,8 @@ export interface NativeClientBlips {
     waypoint?(): HogwartsMpWaypoint | null;
 }
 
+export type NativeMapIcons = typeof MapIcons;
+
 export interface ClientLogger {
     info(...args: unknown[]): unknown;
     warn(...args: unknown[]): unknown;

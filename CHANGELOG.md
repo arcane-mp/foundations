@@ -107,6 +107,12 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   otherwise, so progress never passes between characters. Revelio pages and map icons show a restore
   after the next map load. It defaults to `true`. It needs HogwartsMP `1.11` or newer for `FieldGuide`;
   an older host ignores it.
+- `hmp-blips` `nativeIcons` hides the game's own map icons (shops, Floo Flames, chests, quests...) on
+  every player's map and minimap, by category such as `"fasttravel"` or by icon id (`hide`), and gives
+  chosen icons a new tooltip title and description (`labels`). Each client applies it when it joins as
+  `hmp-blips`'s own rules, which go when `hmp-blips` stops; script markers are never touched. It defaults
+  to nothing hidden or retitled. It needs HogwartsMP `1.11` or newer for `MapIcons`; an older host
+  ignores it.
 
 ### Fixed
 

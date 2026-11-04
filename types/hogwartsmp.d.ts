@@ -930,6 +930,15 @@ declare global {
         /** Destroys every shape this resource made, returning how many. */
         destroyAll(): number;
     };
+    /** Client: the game's own map icons. Rules and labels belong to the calling resource and go when it stops. */
+    const MapIcons: {
+        /** Hides a category, or else an icon id, on the map and the minimap; `false` lifts this resource's rule. */
+        setHidden(target: string, hidden: boolean): void;
+        /** Retitles an icon's map tooltip; `""` hides the description, leaving it out keeps the game's. */
+        setLabel(id: string, title: string, description?: string | null): void;
+        /** Drops every hide rule and label this resource set. */
+        reset(): void;
+    };
     const Camera: {
         capture(): {
             position: HogwartsMpVector3;

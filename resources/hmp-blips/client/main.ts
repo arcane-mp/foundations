@@ -7,7 +7,13 @@ declare const Blips: NativeClientBlips;
 const { createBlipsClient } = clientModule;
 const Hmp = Imports.get<HmpLibClient>("hmp-lib");
 const logger = Hmp.logger.create("hmp-blips");
-const client = createBlipsClient({ native: Blips, logger, emitServer: (name, payload) => { Events.emitServer(name, payload); } });
+const client = createBlipsClient({
+    native: Blips,
+    // A host before MapIcons leaves the game's own icons alone.
+    mapIcons: typeof MapIcons === "undefined" ? null : MapIcons,
+    logger,
+    emitServer: (name, payload) => { Events.emitServer(name, payload); },
+});
 
 Exports.register("status", client.status);
 Events.on("hmp-blips:set", client.set);
@@ -16,6 +22,7 @@ Events.on("hmp-blips:replay", client.replay);
 Events.on("hmp-blips:clear", client.clear);
 Events.on("hmp-blips:pulse", client.pulse);
 Events.on("hmp-blips:players", client.setPlayers);
+Events.on("hmp-blips:native-icons", client.nativeIcons);
 Events.on("resourceStop", (name?: string) => { if (!name || name === "hmp-blips") client.stop(); });
 Events.emitServer("hmp-blips:ready", "{}");
 

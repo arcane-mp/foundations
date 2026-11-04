@@ -32,7 +32,8 @@ world, not catchable again.
 `hmp-emotes` includes one for curated aliases, editor groups, the `allowAll` catalog policy, and renderer selection.
 `hmp-audio` includes one for Wwise aliases, positional range, handle limits, closed-test commands, and the
 game's own dialogue, left to the host (`dialogue: {}`).
-`hmp-blips` includes one for marker lifetimes, player visibility, native tint/scale, and private probes.
+`hmp-blips` includes one for marker lifetimes, player visibility, native tint/scale, the game's own map icons
+(`nativeIcons`, nothing hidden), and private probes.
 `hmp-spells` includes a closed-testing starter kit, group rules, admin commands, cast-report limits, and
 one server-defined spell, Firestorm, which stays locked until granted (`/spells grant me Firestorm`) and
 needs HogwartsMP `1.10` or newer for `Spells.define`; an older host skips it with a warning. Its lesson,
@@ -68,7 +69,8 @@ Review at minimum:
 - the Hogwarts Express timetable and stops, or `enabled: false` when another script runs the train;
 - which emotes players may browse, which groups may curate aliases, and the emote UI URL;
 - audio aliases, positional delivery range, handle limits, and whether `/audio` testing is enabled;
-- marker TTL/limits, whether every remote player is shown, and the player-blip tint/scale settings;
+- marker TTL/limits, whether every remote player is shown, the player-blip tint/scale settings, and which of
+  the game's own map icons are hidden or retitled;
 - starter spell policy, group-gated kits, bonus loadouts, and whether `/spells` testing is enabled;
 - maximum XP/talent-point bounds, who may use progression administration commands, and whether each
   character's Floo flames and Field Guide are kept;

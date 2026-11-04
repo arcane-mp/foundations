@@ -6,6 +6,10 @@
   "houseTint": true,
   "playerBlipScale": 1,
   "hideBaseIcon": false,
+  "nativeIcons": {
+    "hide": [],
+    "labels": {}
+  },
   "enableCommands": true,
   "command": "blips"
 }

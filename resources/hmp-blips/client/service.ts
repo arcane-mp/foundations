@@ -1,8 +1,10 @@
-import type { HmpBlipsClient } from "../types";
-import type { ClientLogger, NativeClientBlips } from "./internal";
+import type { HmpBlipNativeIconLabel, HmpBlipsClient } from "../types";
+import type { ClientLogger, NativeClientBlips, NativeMapIcons } from "./internal";
 
 interface ClientDependencies {
     native: NativeClientBlips;
+    /** The game's own map icons; null on a host without `MapIcons`. */
+    mapIcons?: NativeMapIcons | null;
     logger: ClientLogger;
     /** Sends the player's own map waypoint to the server. */
     emitServer?: (eventName: string, payload: string) => void;
@@ -38,14 +40,20 @@ function createBlipsClient(dependencies: ClientDependencies): HmpBlipsClient & {
     setPlayers(payload: unknown): boolean;
     /** A waypointChanged waypoint, or Blips.waypoint() at start: reported to the server. */
     reportWaypoint(waypoint: unknown): boolean;
+    /** The server's `nativeIcons`, applied in place of whatever was applied before. */
+    nativeIcons(payload: unknown): boolean;
     stop(): void;
 } {
     const { native, logger } = dependencies;
+    const mapIcons = dependencies.mapIcons || null;
     const now = dependencies.now || Date.now;
     const startedAt = now();
     const markerKeys = new Set<string>();
     let coloredPlayers = new Set<number>();
     let tracksAll = true;
+    let appliedIcons = "";
+    let iconCounts = { hidden: 0, labels: 0 };
+    let warnedIcons = false;
     let stopped = false;
 
     function marker(payload: unknown): WireMarker | null {
@@ -146,9 +154,48 @@ function createBlipsClient(dependencies: ClientDependencies): HmpBlipsClient & {
         return true;
     }
 
+    function nativeIcons(payload: unknown): boolean {
+        if (stopped) return false;
+        const value = objectPayload(payload);
+        if (!value) return false;
+        const hide = Array.isArray(value.hide) ? value.hide.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "") : [];
+        const rawLabels = value.labels && typeof value.labels === "object" && !Array.isArray(value.labels) ? value.labels as Record<string, unknown> : {};
+        const labels: Array<[string, HmpBlipNativeIconLabel]> = [];
+        for (const [id, raw] of Object.entries(rawLabels)) {
+            const label = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
+            if (!id.trim() || typeof label?.title !== "string" || !label.title) continue;
+            labels.push([id, { title: label.title, description: typeof label.description === "string" ? label.description : undefined }]);
+        }
+        const key = JSON.stringify([hide, labels]);
+        if (key === appliedIcons) return true;
+        if (!mapIcons) {
+            if ((hide.length || labels.length) && !warnedIcons) {
+                logger.warn("nativeIcons needs HogwartsMP 1.11 or newer for MapIcons; the game's map icons stay as they are");
+                warnedIcons = true;
+            }
+            return false;
+        }
+        mapIcons.reset();
+        let hidden = 0, labelled = 0;
+        for (const target of hide) {
+            try { mapIcons.setHidden(target, true); hidden++; }
+            catch (error) { logger.warn(`Could not hide native map icons '${target}'`, error); }
+        }
+        for (const [id, label] of labels) {
+            try { mapIcons.setLabel(id, label.title, label.description); labelled++; }
+            catch (error) { logger.warn(`Could not label native map icon '${id}'`, error); }
+        }
+        appliedIcons = key;
+        iconCounts = { hidden, labels: labelled };
+        return true;
+    }
+
     function stop(): void {
         if (stopped) return;
         clear();
+        if (mapIcons && appliedIcons) mapIcons.reset();
+        appliedIcons = "";
+        iconCounts = { hidden: 0, labels: 0 };
         for (const id of coloredPlayers) native.setPlayerColor(id);
         coloredPlayers.clear();
         native.trackAllPlayers(true);
@@ -160,7 +207,7 @@ function createBlipsClient(dependencies: ClientDependencies): HmpBlipsClient & {
     }
 
     return {
-        status: () => ({ state: stopped ? "stopped" : "ready", markers: markerKeys.size, coloredPlayers: coloredPlayers.size, trackAllPlayers: tracksAll, uptimeMs: Math.max(0, now() - startedAt) }),
+        status: () => ({ state: stopped ? "stopped" : "ready", markers: markerKeys.size, coloredPlayers: coloredPlayers.size, trackAllPlayers: tracksAll, nativeIcons: { ...iconCounts }, uptimeMs: Math.max(0, now() - startedAt) }),
         set,
         remove,
         replay,
@@ -168,6 +215,7 @@ function createBlipsClient(dependencies: ClientDependencies): HmpBlipsClient & {
         pulse,
         setPlayers,
         reportWaypoint,
+        nativeIcons,
         stop,
     };
 }

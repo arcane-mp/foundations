@@ -161,6 +161,21 @@ export interface HmpBlipWaypointsApi<P = HmpBlipPlayer> {
     list(resource?: string): HmpBlipWaypointShareInfo[];
 }
 
+/** A tooltip `nativeIcons.labels` puts over one of the game's own map icons. */
+export interface HmpBlipNativeIconLabel {
+    title: string;
+    /** `""` hides the game's description; left out, it stays. */
+    description?: string;
+}
+
+/** The `nativeIcons` config: the game's own map icons (shops, Floo Flames, collectibles...) on every client. */
+export interface HmpBlipNativeIcons {
+    /** Categories (`"fasttravel"`, `"locationshogsmeade"`...), or else icon ids, kept off the map and minimap. */
+    hide: string[];
+    /** Tooltips by icon id, such as `"HM_JPippensPotions"`. */
+    labels: Record<string, HmpBlipNativeIconLabel>;
+}
+
 export interface HmpBlipsStatus {
     state: "ready" | "stopped";
     markers: number;
@@ -190,6 +205,8 @@ export interface HmpBlipsClientStatus {
     markers: number;
     coloredPlayers: number;
     trackAllPlayers: boolean;
+    /** The `nativeIcons` hide rules and labels applied; both 0 on a host without `MapIcons`. */
+    nativeIcons: { hidden: number; labels: number };
     uptimeMs: number;
 }
 

@@ -1,9 +1,11 @@
 import assert = require("node:assert");
 import serverModule = require("../server/service");
+import configModule = require("../server/config");
 import clientModule = require("../client/service");
 import type { HmpBlipPlayer } from "../types";
 
 const { createBlipsService } = serverModule;
+const { nativeIcons: normalizeNativeIcons } = configModule;
 const { createBlipsClient } = clientModule;
 
 interface TestPlayer extends HmpBlipPlayer {
@@ -50,6 +52,7 @@ async function run(): Promise<void> {
             houseTint: true,
             playerBlipScale: 1.2,
             hideBaseIcon: false,
+            nativeIcons: { hide: [], labels: {} },
             enableCommands: false,
             command: "blips",
         },
@@ -194,7 +197,7 @@ async function waypoints(): Promise<void> {
     const broadcasts: Array<{ name: string; payload: unknown }> = [];
     const service = createBlipsService<TestPlayer>({
         core: { groups: { has: async () => false } },
-        config: { defaultTtl: 600, maxTtl: 0, maxMarkersPerResource: 4, showAllPlayers: true, houseTint: true, playerBlipScale: 1, hideBaseIcon: false, enableCommands: false, command: "blips" },
+        config: { defaultTtl: 600, maxTtl: 0, maxMarkersPerResource: 4, showAllPlayers: true, houseTint: true, playerBlipScale: 1, hideBaseIcon: false, nativeIcons: { hide: [], labels: {} }, enableCommands: false, command: "blips" },
         players: () => connected,
         events: { emit: (name, payload) => emitted.push({ name, payload }), emitAllClients: (name, payload) => broadcasts.push({ name, payload }) },
         logger: { warn() {}, error() {} },
@@ -264,4 +267,97 @@ async function waypoints(): Promise<void> {
     assert.strictEqual(service.waypoints.get(friend), null);
 }
 
-run().then(waypoints).then(() => console.log("hmp-blips tests passed"));
+const noNative = {
+    setMarker: () => true,
+    setCircle: () => true,
+    remove: () => true,
+    clear() {},
+    pulseCircle: () => true,
+    setPlayerColor() {},
+    setTrackedPlayers() {},
+    trackAllPlayers() {},
+    setHouseTint: () => true,
+    setBlipScale() {},
+    hideBaseIcon() {},
+};
+
+async function nativeIcons(): Promise<void> {
+    // The config keeps one rule per target whatever its case, and refuses a label without a title.
+    assert.deepStrictEqual(normalizeNativeIcons(undefined), { hide: [], labels: {} });
+    assert.deepStrictEqual(normalizeNativeIcons({
+        hide: [" fasttravel ", "FastTravel", "HM_JPippensPotions"],
+        labels: { HM_JPippensPotions: { title: "Apothecary", description: "" }, FT_HW_GreatHall: { title: "Dinner" } },
+    }), {
+        hide: ["fasttravel", "HM_JPippensPotions"],
+        labels: { HM_JPippensPotions: { title: "Apothecary", description: "" }, FT_HW_GreatHall: { title: "Dinner" } },
+    });
+    assert.throws(() => normalizeNativeIcons({ hide: "fasttravel" }), /hide must be an array/);
+    assert.throws(() => normalizeNativeIcons({ hide: [""] }), /hide entry/);
+    assert.throws(() => normalizeNativeIcons({ labels: { HM_JPippensPotions: { description: "x" } } }), /HM_JPippensPotions\.title/);
+    assert.throws(() => normalizeNativeIcons({ labels: { HM_JPippensPotions: { title: "x".repeat(121) } } }), /title/);
+
+    // The server sends each joining client its config, and an empty one when it stops.
+    const player = makePlayer(1);
+    const broadcasts: Array<{ name: string; payload: unknown }> = [];
+    const config = { hide: ["fasttravel"], labels: { HM_JPippensPotions: { title: "Apothecary" } } };
+    const service = createBlipsService<TestPlayer>({
+        core: { groups: { has: async () => false } },
+        config: { defaultTtl: 600, maxTtl: 0, maxMarkersPerResource: 4, showAllPlayers: true, houseTint: true, playerBlipScale: 1, hideBaseIcon: false, nativeIcons: config, enableCommands: false, command: "blips" },
+        players: () => [player],
+        events: { emit() {}, emitAllClients: (name, payload) => broadcasts.push({ name, payload: typeof payload === "string" ? JSON.parse(payload) : payload }) },
+        logger: { warn() {}, error() {} },
+        now: () => 1000,
+    });
+    await service.syncPlayer(player);
+    assert.deepStrictEqual(player.messages.find((message) => message.name === "hmp-blips:native-icons")?.payload, config);
+    service.stop();
+    assert.deepStrictEqual(broadcasts.find((message) => message.name === "hmp-blips:native-icons")?.payload, { hide: [], labels: {} });
+
+    // The client applies it through MapIcons as its own rules, once per change, and resets them when it stops.
+    const calls: unknown[][] = [];
+    const warnings: unknown[] = [];
+    const mapIcons = {
+        setHidden: (target: string, hidden: boolean) => {
+            if (!target) throw new TypeError("target cannot be empty");
+            calls.push(["hide", target, hidden]);
+        },
+        setLabel: (id: string, title: string, description?: string | null) => { calls.push(["label", id, title, description]); },
+        reset: () => { calls.push(["reset"]); },
+    };
+    const client = createBlipsClient({ native: noNative, mapIcons, logger: { info() {}, warn: (...args) => warnings.push(args) } });
+    assert.strictEqual(client.nativeIcons(JSON.stringify({ hide: ["fasttravel", "HM_JPippensPotions"], labels: { HM_JPippensPotions: { title: "Apothecary", description: "" }, FT_HW_GreatHall: { title: "Dinner" } } })), true);
+    assert.deepStrictEqual(calls, [
+        ["reset"],
+        ["hide", "fasttravel", true],
+        ["hide", "HM_JPippensPotions", true],
+        ["label", "HM_JPippensPotions", "Apothecary", ""],
+        ["label", "FT_HW_GreatHall", "Dinner", undefined],
+    ]);
+    assert.deepStrictEqual(client.status().nativeIcons, { hidden: 2, labels: 2 });
+    calls.length = 0;
+    assert.strictEqual(client.nativeIcons({ hide: ["fasttravel", "HM_JPippensPotions"], labels: { HM_JPippensPotions: { title: "Apothecary", description: "" }, FT_HW_GreatHall: { title: "Dinner" } } }), true);
+    assert.deepStrictEqual(calls, [], "the same config is not applied twice");
+    assert.strictEqual(client.nativeIcons({ hide: ["treasurechest"], labels: {} }), true);
+    assert.deepStrictEqual(calls, [["reset"], ["hide", "treasurechest", true]]);
+    assert.strictEqual(client.nativeIcons("{"), false);
+    calls.length = 0;
+    client.stop();
+    assert.deepStrictEqual(calls, [["reset"]]);
+    assert.deepStrictEqual(client.status().nativeIcons, { hidden: 0, labels: 0 });
+    assert.strictEqual(client.nativeIcons({ hide: ["fasttravel"], labels: {} }), false);
+    assert.deepStrictEqual(warnings, []);
+
+    // A host without MapIcons applies nothing and warns once, and only when there is something to apply.
+    const olderWarnings: unknown[] = [];
+    const older = createBlipsClient({ native: noNative, mapIcons: null, logger: { info() {}, warn: (...args) => olderWarnings.push(args) } });
+    assert.strictEqual(older.nativeIcons({ hide: [], labels: {} }), false);
+    assert.strictEqual(olderWarnings.length, 0);
+    assert.strictEqual(older.nativeIcons({ hide: ["fasttravel"], labels: {} }), false);
+    assert.strictEqual(older.nativeIcons({ hide: ["treasurechest"], labels: {} }), false);
+    assert.strictEqual(olderWarnings.length, 1);
+    assert.match(String((olderWarnings[0] as unknown[])[0]), /1\.11.*MapIcons/);
+    assert.deepStrictEqual(older.status().nativeIcons, { hidden: 0, labels: 0 });
+    older.stop();
+}
+
+run().then(waypoints).then(nativeIcons).then(() => console.log("hmp-blips tests passed"));

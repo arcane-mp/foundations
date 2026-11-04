@@ -39,6 +39,7 @@ assert.ok(serverHandlers.has("client:hmp-blips:ready"));
 assert.ok(serverHandlers.has("client:hmp-blips:waypoint"));
 assert.ok(serverHandlers.has("playerLocationChanged"));
 assert.ok(broadcasts.some((entry) => entry.name === "hmp-blips:clear"));
+assert.ok(broadcasts.some((entry) => entry.name === "hmp-blips:native-icons" && entry.payload === JSON.stringify({ hide: [], labels: {} })));
 
 void (async () => {
     await serverHandlers.get("client:hmp-blips:waypoint")(player, JSON.stringify({ waypoint: { x: 4, y: 5, z: 6, target: null } }));
@@ -46,9 +47,9 @@ void (async () => {
     assert.deepStrictEqual(serverExports.get("waypoints").get(player), { x: 4, y: 5, z: 6, target: null, areaId: "Hogwarts" });
 
     const clientBundle = path.resolve(__dirname, "..", "dist", "client.js");
-    function loadClient(waypoint) {
+    function loadClient(waypoint, mapIcons) {
         delete require.cache[clientBundle];
-        const loaded = { exports: new Map(), handlers: new Map(), emits: [], nativeCalls: [] };
+        const loaded = { exports: new Map(), handlers: new Map(), emits: [], nativeCalls: [], iconCalls: [] };
         global.Exports = { register: (name, value) => loaded.exports.set(name, value) };
         global.Imports = { get: () => ({ logger: { create: () => logger } }) };
         global.Events = {
@@ -69,12 +70,18 @@ void (async () => {
             hideBaseIcon() {},
             ...(waypoint === undefined ? {} : { waypoint: () => waypoint }),
         };
+        if (mapIcons) global.MapIcons = {
+            setHidden: (...args) => { loaded.iconCalls.push(["hide", ...args]); },
+            setLabel: (...args) => { loaded.iconCalls.push(["label", ...args]); },
+            reset: () => { loaded.iconCalls.push(["reset"]); },
+        };
+        else delete global.MapIcons;
         require(clientBundle);
         return loaded;
     }
 
     // A host with waypoint reads reports the waypoint already placed, then each change.
-    const client = loadClient({ x: 1, y: 2, z: 3, target: "FT_HW_GreatHall" });
+    const client = loadClient({ x: 1, y: 2, z: 3, target: "FT_HW_GreatHall" }, true);
     assert.deepStrictEqual([...client.exports.keys()], ["status"]);
     assert.deepStrictEqual(client.emits, [
         { name: "hmp-blips:ready", payload: "{}" },
@@ -84,12 +91,18 @@ void (async () => {
     assert.deepStrictEqual(client.emits.at(-1), { name: "hmp-blips:waypoint", payload: JSON.stringify({ waypoint: null }) });
     client.handlers.get("hmp-blips:set")({ key: "smoke", kind: "marker", x: 1, y: 2, z: 3 });
     assert.ok(client.nativeCalls.some((entry) => entry[0] === "marker"));
+    client.handlers.get("hmp-blips:native-icons")(JSON.stringify({ hide: ["fasttravel"], labels: { HM_JPippensPotions: { title: "Apothecary" } } }));
+    assert.deepStrictEqual(client.iconCalls, [["reset"], ["hide", "fasttravel", true], ["label", "HM_JPippensPotions", "Apothecary", undefined]]);
     client.handlers.get("resourceStop")("hmp-blips");
     assert.strictEqual(client.exports.get("status")().state, "stopped");
+    assert.deepStrictEqual(client.iconCalls.at(-1), ["reset"]);
 
     // An older host has no Blips.waypoint: nothing is reported.
     const older = loadClient(undefined);
     assert.deepStrictEqual(older.emits.map((entry) => entry.name), ["hmp-blips:ready"]);
     assert.ok(!older.handlers.has("waypointChanged"));
+    // Nor MapIcons: the game's own icons stay as they are.
+    assert.strictEqual(older.handlers.get("hmp-blips:native-icons")(JSON.stringify({ hide: ["fasttravel"], labels: {} })), false);
+    assert.deepStrictEqual(older.exports.get("status")().nativeIcons, { hidden: 0, labels: 0 });
     console.log("hmp-blips bundle contract passed");
 })().catch((error) => { console.error(error); process.exit(1); });

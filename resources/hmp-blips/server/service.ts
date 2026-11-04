@@ -425,6 +425,7 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
     async function syncPlayer(player: P): Promise<number> {
         const count = await syncMarkerPlayer(player);
         await pushPlayerView(player);
+        if (!stopped && playerById(player.id)) emit(player, "hmp-blips:native-icons", config.nativeIcons);
         return count;
     }
 
@@ -571,6 +572,7 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
         waypointShares.clear();
         events.emitAllClients("hmp-blips:clear", "{}");
         events.emitAllClients("hmp-blips:players", JSON.stringify({ all: true, visible: [], colors: {}, houseTint: true, scale: 1, hideBaseIcon: false }));
+        events.emitAllClients("hmp-blips:native-icons", JSON.stringify({ hide: [], labels: {} }));
     }
 
     const markerApi = Object.freeze({ upsert: upsertMarker, remove: removeMarker, clear: clearMarkers, get: getMarker, list: listMarkers, pulse: pulseMarker, sync: syncMarkers });

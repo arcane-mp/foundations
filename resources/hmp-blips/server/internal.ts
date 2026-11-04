@@ -1,4 +1,4 @@
-import type { HmpBlipPlayer } from "../types";
+import type { HmpBlipNativeIcons, HmpBlipPlayer } from "../types";
 
 export interface BlipsConfig {
     defaultTtl: number;
@@ -8,6 +8,7 @@ export interface BlipsConfig {
     houseTint: boolean;
     playerBlipScale: number;
     hideBaseIcon: boolean;
+    nativeIcons: HmpBlipNativeIcons;
     enableCommands: boolean;
     command: string;
 }

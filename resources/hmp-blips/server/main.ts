@@ -22,6 +22,7 @@ function refreshAll(): void {
 
 Events.emitAllClients("hmp-blips:clear", "{}");
 Events.emitAllClients("hmp-blips:players", JSON.stringify({ all: config.showAllPlayers, visible: [], colors: {}, houseTint: config.houseTint, scale: config.playerBlipScale, hideBaseIcon: config.hideBaseIcon }));
+Events.emitAllClients("hmp-blips:native-icons", JSON.stringify(config.nativeIcons));
 Events.onClient("hmp-blips:ready", (player: HmpBlipPlayer) => safe(blips.syncPlayer(player), `Could not sync blips to #${player.id}`));
 Events.onClient("hmp-blips:waypoint", (player: HmpBlipPlayer, payload: unknown) => safe(blips.reportWaypoint(player, payload), `Could not take #${player.id}'s waypoint`));
 Events.on("playerConnect", (player: HmpBlipPlayer) => {
