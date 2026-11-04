@@ -1,5 +1,6 @@
 import { getCatalogEntry, hasCatalogEntry, listCatalogEntries } from "../shared/catalog";
 import type {
+    HmpNpcFollowOptions,
     HmpNpcIdle,
     HmpNpcMoveEndReason,
     HmpNpcMoveOptions,
@@ -11,7 +12,7 @@ import type {
     HmpNpcWaypoint,
     HmpNpcs,
 } from "../types";
-import type { NativeNpc, NpcsServiceOptions } from "./internal";
+import type { NativeNpc, NativeNpcSpawnOptions, NativeNpcs, NpcsServiceOptions } from "./internal";
 
 interface ManagedNpc { resource: string; npc: NativeNpc }
 
@@ -89,6 +90,31 @@ function moveOptions(raw: HmpNpcMoveOptions | undefined): HmpNpcMoveOptions {
     if (raw.radius !== undefined) options.radius = finite(raw.radius, "NPC move radius", 0, 5000);
     if (raw.speedScale !== undefined) options.speedScale = finite(raw.speedScale, "NPC move speedScale", 0.25, 3);
     return options;
+}
+
+function followOptions(raw: HmpNpcFollowOptions | undefined): HmpNpcFollowOptions {
+    if (raw === undefined) return {};
+    if (!raw || typeof raw !== "object") throw new TypeError("NPC follow options must be an object");
+    const options: HmpNpcFollowOptions = {};
+    const gait = oneOf(raw.gait, "NPC follow gait", GAITS);
+    const then = oneOf(raw.then, "NPC follow then", IDLES);
+    if (gait) options.gait = gait;
+    if (then) options.then = then;
+    if (raw.speedScale !== undefined) options.speedScale = finite(raw.speedScale, "NPC follow speedScale", 0.25, 3);
+    if (raw.distanceCm !== undefined) options.distanceCm = finite(raw.distanceCm, "NPC follow distanceCm", 100, 3000);
+    if (raw.teleportBeyond !== undefined) options.teleportBeyond = finite(raw.teleportBeyond, "NPC follow teleportBeyond", 0, 100_000);
+    return options;
+}
+
+/** The options form, which alone takes a yaw; a host before it throws a TypeError, and gets the positional form. */
+function createNative(native: NativeNpcs, enemyId: string, at: NativeNpcSpawnOptions): NativeNpc | undefined {
+    try {
+        return native.create(enemyId, at);
+    } catch (error) {
+        // The input is validated, so a TypeError here is the host refusing the form.
+        if ((error as Error | undefined)?.name !== "TypeError") throw error;
+    }
+    return native.create(enemyId, at.x, at.y, at.z, at.disposition, at.preferredOwnerId);
 }
 
 /** NPC paths arrived after HogwartsMP 1.9.2; an older host's handle has none of it. */
@@ -194,6 +220,15 @@ export function createNpcsService(options: NpcsServiceOptions): NpcsService {
             const npc = owned(id, resource);
             return npc ? npc.moveTo(point.x, point.y, point.z, normalized) === true : false;
         },
+        follow(id: number, resource: string, target: { id: number }, options?: HmpNpcFollowOptions): boolean {
+            if (!target || typeof target !== "object") throw new TypeError("NPC follow target must be an entity");
+            const targetId = integer(target.id, "NPC follow target id", 1);
+            if (targetId === Number(id)) throw new TypeError("An NPC cannot follow itself");
+            const normalized = followOptions(options);
+            const npc = owned(id, resource);
+            // The host reads only the target's id; follow arrived after HogwartsMP 1.10.
+            return npc && typeof npc.follow === "function" ? npc.follow({ id: targetId }, normalized) === true : false;
+        },
         stop(id: number, resource: string): boolean {
             const npc = owned(id, resource);
             if (npc) npc.stop();
@@ -228,8 +263,15 @@ export function createNpcsService(options: NpcsServiceOptions): NpcsService {
             const home = npc.home;
             return {
                 state: current
-                    ? { mode: current.mode, waypoint: current.waypoint, waypoints: current.waypoints, lap: current.lap, paused: current.paused }
-                    : { mode: "idle", waypoint: 0, waypoints: 0, lap: 0, paused: false },
+                    ? {
+                        mode: current.mode,
+                        waypoint: current.waypoint,
+                        waypoints: current.waypoints,
+                        lap: current.lap,
+                        paused: current.paused,
+                        targetId: Number(current.targetId) || 0,
+                    }
+                    : { mode: "idle", waypoint: 0, waypoints: 0, lap: 0, paused: false, targetId: 0 },
                 waypoints: (npc.waypoints || []).map((point) => ({ ...point })),
                 idle: npc.idle || "native",
                 home: home ? { x: home.x, y: home.y, z: home.z } : null,
@@ -251,12 +293,16 @@ export function createNpcsService(options: NpcsServiceOptions): NpcsService {
             if (managed.size >= config.maximumManagedNpcs) throw new Error("hmp-npcs managed NPC limit reached");
             if (count(resource) >= config.maximumPerResource) throw new Error(`hmp-npcs limit reached for '${resource}'`);
             const { x, y, z } = vector(input.position, "NPC position");
+            const yaw = input.yaw === undefined ? undefined : finite(input.yaw, "NPC yaw", -360, 360);
             const disposition = input.disposition || "hostile";
             if (!(["hostile", "friendly"] as const).includes(disposition)) throw new TypeError("NPC disposition is invalid");
             const ownerId = input.ownerId === undefined ? undefined : integer(input.ownerId, "NPC ownerId", 0);
             const maxHealth = input.maxHealth === undefined ? undefined : finite(input.maxHealth, "NPC maxHealth", 1, 100_000_000);
             const scale = input.scale === undefined ? undefined : finite(input.scale, "NPC scale", 0.05, 100);
-            const npc = native.create(input.enemyId, x, y, z, disposition, ownerId);
+            const at: NativeNpcSpawnOptions = { x, y, z, disposition };
+            if (yaw !== undefined) at.yaw = yaw;
+            if (ownerId !== undefined) at.preferredOwnerId = ownerId;
+            const npc = createNative(native, input.enemyId, at);
             if (!npc) throw new Error(`Framework could not spawn '${input.enemyId}'`);
             if (managed.has(npc.id)) {
                 try { npc.destroy(); } catch { /* Best effort rollback. */ }

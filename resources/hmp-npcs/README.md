@@ -18,6 +18,7 @@ const enemy = npcs.spawn({
   resource: "my-gamemode",
   enemyId: "Goblin_Grunt",
   position: { x: 100, y: 200, z: 300 },
+  yaw: 90,
   disposition: "hostile",
   ownerId: player.id,
   maxHealth: 250,
@@ -30,6 +31,10 @@ npcs.setVirtualWorld(enemy.id, "my-gamemode", instance, player.location().areaId
 npcs.destroy(enemy.id, "my-gamemode");
 npcs.clear("my-gamemode");
 ```
+
+`yaw` is the heading in degrees the NPC spawns facing, -360 to 360: 0 faces +X and 90 faces +Y. It
+needs HogwartsMP `1.11` or newer for `NPC.create`'s options form. An older host refuses that form, so
+`spawn` falls back to the positional one and the NPC faces 0, as before.
 
 `setVirtualWorld(id, resource, world, map?)` moves an NPC the resource spawned into a virtual world
 within a map, where it meets the players in that world of that map, so world 7 of a dungeon is one
@@ -62,7 +67,8 @@ npcs.movement.pause(guard.id, "my-gamemode");
 npcs.movement.resume(guard.id, "my-gamemode");
 npcs.movement.stop(guard.id, "my-gamemode");
 npcs.movement.setIdle(guard.id, "my-gamemode", "wander", { x: 100, y: 200, z: 300 });
-npcs.movement.get(guard.id); // { state, waypoints, idle, home }
+npcs.movement.follow(guard.id, "my-gamemode", player, { gait: "jog", distanceCm: 300 });
+npcs.movement.get(guard.id); // { state, waypoints, idle, home }; state.targetId names whom it follows
 ```
 
 - Points are at a player's origin height, as `player.position`. A path has 1 to 64 points, each with
@@ -73,11 +79,19 @@ npcs.movement.get(guard.id); // { state, waypoints, idle, home }
 - A `"once"` path ends in its `then` idle (default `"stand"`) at its last point, which becomes its
   home. `setIdle` sets what it does while no path runs: `"native"` (the game's own wander where it
   spawned), `"stand"` (hold at its home) or `"wander"` (roam around it).
+- `follow` walks the NPC after a player, beast, NPC or Character (any other than itself) until `stop`
+  or a new command. It rests inside `distanceCm` (100 to 3000, default 200) and walks again once the
+  target pulls 100 cm past it; `teleportBeyond` (metres, default 60, `0` never) puts it beside a
+  target it falls that far behind. `gait`, `speedScale` and `then` work as for a path, and `then` is
+  taken up where it stands once the follow ends. A fight holds it as it holds a path, and it ends
+  `"targetGone"` when the target leaves. The followed player's own client runs the NPC.
 - Every call takes the resource that spawned the NPC and is false for any other, for a gone or dead
-  NPC, and on a host without NPC movement, where `get` is null. Malformed input throws a `TypeError`.
+  NPC, and on a host without NPC movement, where `get` is null. Malformed input throws a `TypeError`,
+  and `follow` throws when the host finds no live target.
 
 Movement needs HogwartsMP `1.10` or newer for `NPC.moveAlong`. On an older host every call is false and
-the NPC keeps the game's own behaviour.
+the NPC keeps the game's own behaviour. `follow` needs HogwartsMP `1.11` or newer for `npc.follow`; on
+an older host it is false and `state.targetId` is 0.
 
 ## Events
 
@@ -87,7 +101,7 @@ Events.on("hmp:npcs:waypoint", ({ npc, index, lap }) => {
   // reached waypoints[index], before its wait; lap counts completed laps
 });
 Events.on("hmp:npcs:moveEnded", ({ npc, reason }) => {
-  // reason: "arrived", "stopped", "replaced" or "unreachable"
+  // reason: "arrived", "stopped", "replaced", "unreachable" or "targetGone"
 });
 ```
 

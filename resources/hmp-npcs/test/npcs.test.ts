@@ -1,6 +1,7 @@
 import assert = require("node:assert");
 import { normalizeConfig } from "../server/config";
 import { createNpcsService } from "../server/service";
+import type { NativeNpc, NativeNpcSpawnOptions } from "../server/internal";
 import type { HmpNpcDisposition, HmpNpcIdle } from "../types";
 
 assert.deepStrictEqual(normalizeConfig({ maximumManagedNpcs: 8, maximumPerResource: 4 }), {
@@ -11,8 +12,12 @@ assert.throws(() => normalizeConfig({ maximumManagedNpcs: 2, maximumPerResource:
 
 let nextId = 1;
 const destroyed: number[] = [];
+const positional: unknown[][] = [];
+// A HogwartsMP 1.10 host: NPC.create takes only the positional form and throws a TypeError for the options form.
 const native = {
-    create(enemyId: string, _x: number, _y: number, _z: number, disposition: HmpNpcDisposition = "hostile", ownerId?: number) {
+    create(enemyId: string, x: number | NativeNpcSpawnOptions, y?: number, z?: number, disposition: HmpNpcDisposition = "hostile", ownerId?: number) {
+        if (typeof x !== "number") throw new TypeError("NPC.create(enemyId, x, y, z, disposition?, preferredOwnerId?)");
+        positional.push([enemyId, x, y, z, disposition, ownerId]);
         const npc = {
             id: nextId++, enemyId, disposition, ownerId, alive: true, scale: 1, health: 100, maxHealth: 100,
             setScale(value: number) { this.scale = value; },
@@ -46,23 +51,50 @@ service.stop();
 assert.deepStrictEqual(destroyed, [2, 4, 3]);
 assert.throws(() => service.catalog.list().push({ id: "x", label: "x" }) && service.spawn({ resource: "x", enemyId: "Wolf", position: { x: 0, y: 0, z: 0 } }), /stopped/);
 
+// The options form carries a yaw; a 1.10 host refuses it with a TypeError and gets the positional form, without one.
+const spawned: unknown[][] = [];
+const current = createNpcsService({
+    config: { maximumManagedNpcs: 4, maximumPerResource: 4 },
+    native: { create(enemyId: string, at: NativeNpcSpawnOptions | number, ...rest: unknown[]) { spawned.push([enemyId, at, ...rest]); return native.create(enemyId, 0, 0, 0); } },
+});
+current.spawn({ resource: "camps", enemyId: "Wolf", position: { x: 1, y: 2, z: 3 }, yaw: 90, disposition: "friendly", ownerId: 5 });
+current.spawn({ resource: "camps", enemyId: "Wolf", position: { x: 1, y: 2, z: 3 } });
+assert.deepStrictEqual(spawned, [
+    ["Wolf", { x: 1, y: 2, z: 3, yaw: 90, disposition: "friendly", preferredOwnerId: 5 }],
+    ["Wolf", { x: 1, y: 2, z: 3, disposition: "hostile" }],
+]);
+assert.throws(() => current.spawn({ resource: "camps", enemyId: "Wolf", position: { x: 1, y: 2, z: 3 }, yaw: 720 }), /NPC yaw/);
+assert.strictEqual(spawned.length, 2);
+const before = positional.length;
+const fallback = createNpcsService({ config: { maximumManagedNpcs: 4, maximumPerResource: 4 }, native });
+fallback.spawn({ resource: "camps", enemyId: "Wolf", position: { x: 1, y: 2, z: 3 }, yaw: 90, disposition: "friendly", ownerId: 5 });
+assert.deepStrictEqual(positional.slice(before), [["Wolf", 1, 2, 3, "friendly", 5]]);
+let attempts = 0;
+const failing = createNpcsService({ config: { maximumManagedNpcs: 4, maximumPerResource: 4 }, native: { create() { attempts++; throw new Error("spawn path unavailable"); } } });
+assert.throws(() => failing.spawn({ resource: "camps", enemyId: "Wolf", position: { x: 1, y: 2, z: 3 } }), /spawn path unavailable/);
+assert.strictEqual(attempts, 1, "only a refused form falls back");
+
 // Movement is the owner's alone, validated before the host sees it, and its events reach the owner by resource.
 const moves: unknown[][] = [];
 const events: Array<{ name: string; payload: { npc: { id: number; resource: string }; [key: string]: unknown } }> = [];
+const walkers: Array<{ movement: NativeNpc["movement"] }> = [];
 const walker = {
-    create(enemyId: string, _x: number, _y: number, _z: number, disposition: HmpNpcDisposition = "hostile") {
-        const npc = native.create(enemyId, 0, 0, 0, disposition);
-        return Object.assign(npc, {
+    create(enemyId: string, at: NativeNpcSpawnOptions | number) {
+        const npc = native.create(enemyId, 0, 0, 0, typeof at === "object" ? at.disposition : undefined);
+        const handle = Object.assign(npc, {
             idle: "native" as HmpNpcIdle,
             home: null as { x: number; y: number; z: number } | null,
-            movement: { mode: "path" as const, waypoint: 1, waypoints: 2, lap: 0, paused: false },
+            movement: { mode: "path", waypoint: 1, waypoints: 2, lap: 0, paused: false } as NativeNpc["movement"],
             waypoints: [{ x: 1, y: 2, z: 3, wait: 0, gait: "walk" as const }],
             moveAlong(...args: unknown[]) { moves.push(["along", ...args]); return true; },
             moveTo(...args: unknown[]) { moves.push(["to", ...args]); return true; },
+            follow(...args: unknown[]) { moves.push(["follow", ...args]); return true; },
             stop() { moves.push(["stop"]); },
             pause() { moves.push(["pause"]); },
             resume() { moves.push(["resume"]); },
         });
+        walkers.push(handle);
+        return handle;
     },
 };
 const paths = createNpcsService({
@@ -87,7 +119,7 @@ assert.deepStrictEqual(moves.slice(-3), [["pause"], ["resume"], ["stop"]]);
 assert.strictEqual(paths.movement.stop(guard.id, "intruder"), false);
 assert.strictEqual(paths.movement.setIdle(guard.id, "patrols", "stand", { x: 1, y: 2, z: 3 }), true);
 assert.deepStrictEqual(paths.movement.get(guard.id), {
-    state: { mode: "path", waypoint: 1, waypoints: 2, lap: 0, paused: false },
+    state: { mode: "path", waypoint: 1, waypoints: 2, lap: 0, paused: false, targetId: 0 },
     waypoints: [{ x: 1, y: 2, z: 3, wait: 0, gait: "walk" }],
     idle: "stand",
     home: { x: 1, y: 2, z: 3 },
@@ -95,12 +127,35 @@ assert.deepStrictEqual(paths.movement.get(guard.id), {
 assert.throws(() => paths.movement.setIdle(guard.id, "patrols", "sleep" as never), /idle must be one of/);
 assert.strictEqual(paths.waypoint(guard.id, 1, 0), true);
 assert.strictEqual(paths.moveEnded(guard.id, "replaced"), true);
+assert.strictEqual(paths.moveEnded(guard.id, "targetGone"), true);
 assert.deepStrictEqual(events.map((event) => [event.name, event.payload.npc.resource, event.payload.index ?? event.payload.reason]), [
     ["hmp:npcs:waypoint", "patrols", 1],
     ["hmp:npcs:moveEnded", "patrols", "replaced"],
+    ["hmp:npcs:moveEnded", "patrols", "targetGone"],
 ]);
 assert.strictEqual(paths.moveEnded(9999, "arrived"), false, "an NPC this service does not manage is not forwarded");
-assert.strictEqual(events.length, 2);
+assert.strictEqual(events.length, 3);
+
+// Follow: the owner's alone, validated, and the host is handed only the target's id.
+const leader = { id: 77, nickname: "Poppy" };
+assert.strictEqual(paths.movement.follow(guard.id, "patrols", leader, { gait: "jog", distanceCm: 300, teleportBeyond: 0, then: "wander" }), true);
+assert.deepStrictEqual(moves.at(-1), ["follow", { id: 77 }, { gait: "jog", distanceCm: 300, teleportBeyond: 0, then: "wander" }]);
+assert.strictEqual(paths.movement.follow(guard.id, "intruder", leader), false, "another resource cannot lead it");
+assert.throws(() => paths.movement.follow(guard.id, "patrols", { id: guard.id }), /cannot follow itself/);
+assert.throws(() => paths.movement.follow(guard.id, "patrols", null as never), /target must be an entity/);
+assert.throws(() => paths.movement.follow(guard.id, "patrols", { id: 0 }), /target id/);
+assert.throws(() => paths.movement.follow(guard.id, "patrols", leader, { distanceCm: 50 }), /distanceCm/);
+assert.throws(() => paths.movement.follow(guard.id, "patrols", leader, { teleportBeyond: -1 }), /teleportBeyond/);
+assert.throws(() => paths.movement.follow(guard.id, "patrols", leader, { gait: "fly" as never }), /gait must be one of/);
+walkers[0].movement = { mode: "follow", waypoint: 0, waypoints: 0, lap: 0, paused: false, targetId: 77 };
+assert.deepStrictEqual(paths.movement.get(guard.id)?.state, { mode: "follow", waypoint: 0, waypoints: 0, lap: 0, paused: false, targetId: 77 });
+// A 1.10 host walks paths but has no follow.
+const pathsOnly = createNpcsService({
+    config: { maximumManagedNpcs: 2, maximumPerResource: 2 },
+    native: { create: (enemyId: string) => Object.assign(native.create(enemyId, 0, 0, 0), { moveAlong: () => true }) },
+});
+const plodder = pathsOnly.spawn({ resource: "patrols", enemyId: "Wolf", position: { x: 0, y: 0, z: 0 } });
+assert.strictEqual(pathsOnly.movement.follow(plodder.id, "patrols", leader), false);
 
 // Virtual worlds: the owner's alone, with the map passed only when given.
 const placed: unknown[][] = [];
@@ -121,6 +176,7 @@ assert.strictEqual(placed.length, 2);
 const older = createNpcsService({ config: { maximumManagedNpcs: 2, maximumPerResource: 2 }, native });
 const still = older.spawn({ resource: "patrols", enemyId: "Wolf", position: { x: 0, y: 0, z: 0 } });
 assert.strictEqual(older.movement.along(still.id, "patrols", route), false);
+assert.strictEqual(older.movement.follow(still.id, "patrols", leader), false);
 assert.strictEqual(older.movement.setIdle(still.id, "patrols", "wander"), false);
 assert.strictEqual(older.movement.get(still.id), null);
 

@@ -1,4 +1,12 @@
-import type { HmpNpcDisposition, HmpNpcIdle, HmpNpcMoveOptions, HmpNpcMovementState, HmpNpcVector3, HmpNpcWaypoint } from "../types";
+import type {
+    HmpNpcDisposition,
+    HmpNpcFollowOptions,
+    HmpNpcIdle,
+    HmpNpcMoveOptions,
+    HmpNpcMovementState,
+    HmpNpcVector3,
+    HmpNpcWaypoint,
+} from "../types";
 
 export interface NpcsConfig {
     maximumManagedNpcs: number;
@@ -26,18 +34,29 @@ export interface NativeNpc {
     stop?(): void;
     pause?(): void;
     resume?(): void;
-    readonly movement?: HmpNpcMovementState;
+    /** A host before follow reports no `targetId`. */
+    readonly movement?: Omit<HmpNpcMovementState, "targetId"> & { targetId?: number };
     readonly waypoints?: HmpNpcWaypoint[];
     idle?: HmpNpcIdle;
     home?: HmpNpcVector3 | null;
+    /** Absent on a host before NPC follow. */
+    follow?(target: { id: number }, options?: HmpNpcFollowOptions): boolean;
+}
+
+/** `NPC.create`'s options form; a host before it throws a TypeError for it. */
+export interface NativeNpcSpawnOptions extends HmpNpcVector3 {
+    yaw?: number;
+    disposition?: HmpNpcDisposition;
+    preferredOwnerId?: number;
 }
 
 export interface NativeNpcs {
+    /** The options form, or the deprecated positional one (x, y, z, ...) every host knows, which takes no yaw. */
     create(
         enemyId: string,
-        x: number,
-        y: number,
-        z: number,
+        at: NativeNpcSpawnOptions | number,
+        y?: number,
+        z?: number,
         disposition?: HmpNpcDisposition,
         preferredOwnerId?: number,
     ): NativeNpc | undefined;

@@ -15,6 +15,8 @@ export interface HmpNpcSpawnInput {
     resource: string;
     enemyId: string;
     position: HmpNpcVector3;
+    /** Heading in degrees it spawns facing, -360 to 360: 0 faces +X, 90 faces +Y. A host before HogwartsMP 1.11 ignores it. */
+    yaw?: number;
     disposition?: HmpNpcDisposition;
     ownerId?: number;
     maxHealth?: number;
@@ -60,12 +62,29 @@ export interface HmpNpcMoveOptions {
     then?: HmpNpcIdle;
 }
 
-/** Why a path ended: it finished, `stop()` or a death ended it, a new path replaced it, or the game found no way. */
-export type HmpNpcMoveEndReason = "arrived" | "stopped" | "replaced" | "unreachable";
+/** How `movement.follow` walks after its target, in the NPC's own gaits. */
+export interface HmpNpcFollowOptions {
+    /** "walk" when omitted, the calm wander, which in some families is slower than a walking player; jog keeps up. */
+    gait?: HmpNpcGait;
+    /** The game's speed scale, 0.25 to 3; jog and sprint follow it, the calm walk keeps its stride. */
+    speedScale?: number;
+    /** 100 to 3000 cm, default 200: it rests inside this and walks again once the target pulls 100 cm past it. */
+    distanceCm?: number;
+    /** Metres behind the target past which the server puts the NPC beside it, 0 to 100000; 0 never. Default 60. */
+    teleportBeyond?: number;
+    /** The idle it takes up where it stands once the follow ends, which becomes its home; "stand" when omitted. */
+    then?: HmpNpcIdle;
+}
+
+/**
+ * Why a path or follow ended: it finished, `stop()` or a death ended it, a new command replaced it, the game found no
+ * way, or the followed entity left.
+ */
+export type HmpNpcMoveEndReason = "arrived" | "stopped" | "replaced" | "unreachable" | "targetGone";
 
 export interface HmpNpcMovementState {
-    /** "path" while one runs, waiting at a point and paused included. */
-    mode: "idle" | "path";
+    /** "path" while one runs, waiting at a point and paused included; "follow" while it follows. */
+    mode: "idle" | "path" | "follow";
     /** Index of the waypoint it heads for or waits at. */
     waypoint: number;
     /** How many waypoints the path has; 0 when idle. */
@@ -74,14 +93,16 @@ export interface HmpNpcMovementState {
     lap: number;
     /** Held by `pause()`, or by the NPC's own AI pause. */
     paused: boolean;
+    /** The followed entity's id; 0 when it follows nothing. */
+    targetId: number;
 }
 
 export interface HmpNpcMovement {
     state: HmpNpcMovementState;
-    /** The running path's points as given, each gait resolved; empty when idle. */
+    /** The running path's points as given, each gait resolved; empty when idle or following. */
     waypoints: HmpNpcWaypoint[];
     idle: HmpNpcIdle;
-    /** Where the stand and wander idles keep it; null until set or until a "once" path arrives. */
+    /** Where the stand and wander idles keep it; null until set, until a "once" path arrives or a follow ends. */
     home: HmpNpcVector3 | null;
 }
 
@@ -92,7 +113,7 @@ export interface HmpNpcWaypointEvent {
     lap: number;
 }
 
-/** `hmp:npcs:moveEnded`: a managed NPC's path ended. */
+/** `hmp:npcs:moveEnded`: a managed NPC's path or follow ended. */
 export interface HmpNpcMoveEndedEvent {
     npc: HmpNpcSnapshot;
     reason: HmpNpcMoveEndReason;
@@ -133,12 +154,17 @@ export interface HmpNpcs {
         along(id: number, resource: string, waypoints: ReadonlyArray<HmpNpcWaypoint>, options?: HmpNpcMoveOptions): boolean;
         /** `along` with one point. */
         to(id: number, resource: string, position: HmpNpcVector3, options?: HmpNpcMoveOptions): boolean;
-        /** Ends the running path as "stopped", leaving the NPC to its idle where it stands. */
+        /**
+         * Walks after a player, beast, NPC or Character (any other than this NPC) until `stop` or a new command,
+         * replacing a running one, and ends "targetGone" when it leaves. Throws when the host finds no live target.
+         */
+        follow(id: number, resource: string, target: { id: number }, options?: HmpNpcFollowOptions): boolean;
+        /** Ends the running path or follow as "stopped", leaving the NPC to its idle where it stands. */
         stop(id: number, resource: string): boolean;
-        /** Holds the running path where it is. */
+        /** Holds the running path or follow where it is. */
         pause(id: number, resource: string): boolean;
         resume(id: number, resource: string): boolean;
-        /** Sets what it does while no path runs, at `home` when given (else where it stands, the first time). */
+        /** Sets what it does while no path or follow runs, at `home` when given (else where it stands, the first time). */
         setIdle(id: number, resource: string, idle: HmpNpcIdle, home?: HmpNpcVector3): boolean;
         /** Null for an NPC this service does not manage, or on a host without NPC movement. */
         get(id: number): HmpNpcMovement | null;

@@ -380,6 +380,20 @@ declare global {
         waypoints: number;
         lap: number;
         paused: boolean;
+        /** The followed entity's id, 0 otherwise. HogwartsMP 1.11 or newer. */
+        targetId?: number;
+    }
+    /** How `npc.follow` walks after its target. */
+    interface HogwartsMpNpcFollowOptions {
+        gait?: "walk" | "jog" | "sprint";
+        /** The game's speed scale, 0.25-3; jog and sprint follow it. */
+        speedScale?: number;
+        /** 100-3000 cm, default 200: it rests inside this and walks again once the target pulls 100 cm past it. */
+        distanceCm?: number;
+        /** Metres behind the target past which the server puts the NPC beside it; 0 never. Default 60. */
+        teleportBeyond?: number;
+        /** The idle it takes up where it stands once the follow ends, which becomes `home`. Default "stand". */
+        then?: "native" | "stand" | "wander";
     }
 
     interface HogwartsMpNpc {
@@ -406,9 +420,11 @@ declare global {
         moveAlong(waypoints: HogwartsMpMoveWaypoint[], options?: HogwartsMpNpcMoveOptions): boolean;
         /** `moveAlong` with one point. */
         moveTo(x: number, y: number, z: number, options?: HogwartsMpNpcMoveOptions): boolean;
-        /** Ends the running path as "stopped", leaving the NPC to its idle. */
+        /** Walks after a live player, beast, NPC or Character until `stop`; ends "targetGone" when it leaves. HogwartsMP 1.11 or newer. */
+        follow?(target: { id: number }, options?: HogwartsMpNpcFollowOptions): boolean;
+        /** Ends the running path or follow as "stopped", leaving the NPC to its idle. */
         stop(): void;
-        /** Holds the running path where it is until `resume`. */
+        /** Holds the running path or follow where it is until `resume`. */
         pause(): void;
         resume(): void;
         readonly movement: HogwartsMpMovementState;
@@ -422,6 +438,12 @@ declare global {
 
     const NPC: {
         new(id: number): HogwartsMpNpc;
+        /** HogwartsMP 1.11 or newer; an older host throws a TypeError for it. */
+        create(
+            enemyId: string,
+            options: { x: number; y: number; z: number; yaw?: number; disposition?: "hostile" | "friendly"; preferredOwnerId?: number },
+        ): HogwartsMpNpc | undefined;
+        /** @deprecated Pass the options form, which alone takes a `yaw`. */
         create(
             enemyId: string,
             x: number,
@@ -475,8 +497,8 @@ declare global {
         on(eventName: "playerMoveEnded", listener: (player: HogwartsMpPlayer, owner: string, reason: HogwartsMpPlayerMoveEnd) => unknown): void;
         /** An NPC's path reached `waypoints[index]`, before its wait; `lap` counts completed laps. */
         on(eventName: "npcWaypoint", listener: (npc: HogwartsMpNpc, index: number, lap: number) => unknown): void;
-        /** An NPC's path ended; "replaced" is raised before the new path's events. */
-        on(eventName: "npcMoveEnded", listener: (npc: HogwartsMpNpc, reason: "arrived" | "stopped" | "replaced" | "unreachable") => unknown): void;
+        /** An NPC's path or follow ended; "replaced" is raised before the new path's events. */
+        on(eventName: "npcMoveEnded", listener: (npc: HogwartsMpNpc, reason: "arrived" | "stopped" | "replaced" | "unreachable" | "targetGone") => unknown): void;
         /** Client: the local player's anchor ended, the frame after; `reason` is "script" for a `releaseAnchor`. */
         on(eventName: "anchorReleased", listener: (reason: string, at: HogwartsMpVector3) => unknown): void;
         on(eventName: "playerLocationChanged", listener: (player: HogwartsMpPlayer, current: HogwartsMpPlayerLocation | null, previous: HogwartsMpPlayerLocation | null) => unknown): void;

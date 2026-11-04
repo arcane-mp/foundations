@@ -10,6 +10,15 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 - The shared PvP typings take `curses: "crosshair"`, which `Pvp.configure` accepts on HogwartsMP `1.11`
   or newer: Avada Kedavra, Crucio and Imperio, which the game casts only at a locked target, also hit a
   hostile player fought in skill-shot aim while the crosshair is on them and no lock is held.
+- `hmp-npcs` `spawn` takes a `yaw`, the heading in degrees an NPC faces as it appears (-360 to 360; 0
+  faces +X, 90 faces +Y), so a guard can spawn facing the gate it watches. It defaults to 0, as before.
+  It needs HogwartsMP `1.11` or newer for `NPC.create`'s options form; an older host ignores it.
+- `hmp-npcs` `movement.follow` walks an NPC the resource spawned after a player, beast, NPC or Character
+  until `stop` or a new command, resting inside `distanceCm` (default 200) and put beside the target
+  past `teleportBeyond` metres behind it (default 60). `movement.get` names the followed entity in
+  `state.targetId` (0 otherwise), and `hmp:npcs:moveEnded` forwards `"targetGone"` when the target
+  leaves. Like the other movement calls it is false for an NPC another resource spawned. It needs
+  HogwartsMP `1.11` or newer for `npc.follow`; on an older host it is false.
 
 ### Fixed
 
