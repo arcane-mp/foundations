@@ -45,3 +45,7 @@ export interface CharacterNameInput {
     first?: unknown;
     last?: unknown;
 }
+
+export interface CharacterConfirmInput extends CharacterNameInput {
+    pronoun?: unknown;
+}

@@ -1,5 +1,8 @@
 import type { HmpControlLease, HmpLibClient } from "../../hmp-lib/types";
 import type { HmpCharacterCard, HmpCharacterLook, HmpCharacterUiModel } from "../types";
+import lookModule = require("../shared/look");
+
+const { hexColourOf, pronounOf, withPronoun } = lookModule;
 
 const VIEW_URL = "fw://resources/hmp-characters/dist/index.html";
 const CREATOR_VIEW_URL = "fw://resources/hmp-characters/dist/creator.html";
@@ -24,6 +27,9 @@ interface ClientCharacter extends HmpCharacterCard {
 
 type ClientModel = Omit<HmpCharacterUiModel, "characters"> & { characters: ClientCharacter[] };
 
+interface CreatorFeatures { pronoun: boolean; hairColourHex: boolean }
+const NO_CREATOR_FEATURES: CreatorFeatures = Object.freeze({ pronoun: false, hairColourHex: false });
+
 let view = -1;
 let pageReady = false;
 let visible = false;
@@ -33,6 +39,8 @@ let creatorVisible = false;
 let creatorDisplayed = false;
 let creatorSnapshotReady = false;
 let creatorWaitingForImport = false;
+let creatorImported = false;
+let creatorFeatures = NO_CREATOR_FEATURES;
 let creatorSchema: HogwartsMpCreatorSchema | null = null;
 let creatorReadyTimer: ReturnType<typeof setTimeout> | null = null;
 let controlLease: HmpControlLease | null = null;
@@ -130,6 +138,8 @@ function hideCreator(unlock: boolean): void {
     creatorDisplayed = false;
     creatorSnapshotReady = false;
     creatorWaitingForImport = false;
+    creatorImported = false;
+    creatorFeatures = NO_CREATOR_FEATURES;
     creatorInitialImport = null;
     creatorSchema = null;
     if (creatorView >= 0) Web.hideView(creatorView);
@@ -166,14 +176,15 @@ function pushCreatorSnapshot(): boolean {
     if (!creatorVisible || !creatorPageReady || creatorView < 0) return false;
     const snapshot = readCreatorSnapshot();
     if (!snapshot) return false;
+    const payload = { ...snapshot, capabilities: creatorFeatures };
     if (!creatorDisplayed) {
         creatorDisplayed = true;
         if (creatorReadyTimer) { clearTimeout(creatorReadyTimer); creatorReadyTimer = null; }
         Web.showView(creatorView);
         Web.focusView(creatorView);
-        Web.emit(creatorView, "hmp-creator:open", snapshot);
+        Web.emit(creatorView, "hmp-creator:open", { ...payload, imported: creatorImported });
     } else {
-        Web.emit(creatorView, "hmp-creator:snapshot", snapshot);
+        Web.emit(creatorView, "hmp-creator:snapshot", payload);
     }
     return true;
 }
@@ -188,6 +199,7 @@ function handleCreatorChanged(): void {
         try { accepted = Creator.importLook(look); }
         catch (_) { accepted = false; }
         if (!accepted) cancelCreator("That JSON is not a valid character look.");
+        else creatorImported = true;
         return;
     }
     creatorWaitingForImport = false;
@@ -202,9 +214,11 @@ function openCreator(): void {
     }
     let supported = false;
     let begun = false;
+    let features = NO_CREATOR_FEATURES;
     try {
         const capabilities = Creator.getCapabilities();
         supported = Boolean(capabilities?.session && capabilities?.schema && capabilities?.state && capabilities?.patch && capabilities?.preview && capabilities?.look);
+        features = { pronoun: capabilities?.pronoun === true, hairColourHex: capabilities?.hairColourHex === true };
         if (supported) begun = Creator.begin({ preserveCurrent: true });
     } catch (_) {
         supported = false;
@@ -218,6 +232,8 @@ function openCreator(): void {
     creatorDisplayed = false;
     creatorSnapshotReady = false;
     creatorWaitingForImport = false;
+    creatorImported = false;
+    creatorFeatures = features;
     creatorInitialImport = pendingImportLook;
     pendingImportLook = null;
     lockControls(true);
@@ -410,6 +426,11 @@ function finishCreator(payload: unknown): void {
         creatorError("Enter a first and last name before confirming.");
         return;
     }
+    const pronoun = creatorFeatures.pronoun ? pronounOf(input.dorm) : "";
+    if (creatorFeatures.pronoun && !pronoun) {
+        creatorError("Choose Witch or Wizard before confirming.");
+        return;
+    }
     let committed = false;
     try {
         Creator.setName(first, last);
@@ -423,7 +444,7 @@ function finishCreator(payload: unknown): void {
     }
     hideCreator(false);
     lockControls(true);
-    Events.emitServer("hmp-characters:confirmed", JSON.stringify({ first, last }));
+    Events.emitServer("hmp-characters:confirmed", JSON.stringify(pronoun ? { first, last, pronoun } : { first, last }));
 }
 
 function wireCreator(): void {
@@ -453,6 +474,19 @@ function wireCreator(): void {
             creatorError("That creator option could not be applied.");
         }
     });
+    Web.on(creatorView, "creator:hair-colour", (payload) => {
+        if (!creatorVisible) return;
+        const colour = hexColourOf(creatorRecord(payload).colour);
+        if (!creatorFeatures.hairColourHex || !colour) {
+            creatorError(creatorFeatures.hairColourHex ? "Enter the hair colour as #rrggbb." : "This client does not support a custom hair colour.");
+            return;
+        }
+        try {
+            if (Creator.applyPatch({ hairColour: colour }) < 1) creatorError("That hair colour was not accepted.");
+        } catch (_) {
+            creatorError("That hair colour could not be applied.");
+        }
+    });
     Web.on(creatorView, "creator:voice", (payload) => {
         if (!creatorVisible) return;
         const input = creatorRecord(payload);
@@ -475,7 +509,7 @@ function wireCreator(): void {
         catch (_) { accepted = false; }
         if (!accepted) creatorError("That JSON is not a valid character look.");
     });
-    Web.on(creatorView, "creator:export", () => {
+    Web.on(creatorView, "creator:export", (payload) => {
         if (!creatorVisible) return;
         let look: HogwartsMpLook | null = null;
         try { look = Creator.exportLook(); }
@@ -484,6 +518,8 @@ function wireCreator(): void {
             creatorError("The current character look is not ready to export.");
             return;
         }
+        // The game takes the Witch/Wizard pick only when the saved look loads, so copy the page's pick.
+        if (creatorFeatures.pronoun) look = withPronoun(look, creatorRecord(payload).dorm);
         Web.emit(creatorView, "hmp-creator:export", { json: JSON.stringify(look, null, 2) });
     });
     Web.on(creatorView, "creator:camera", (payload) => {

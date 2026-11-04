@@ -47,6 +47,11 @@ function makeLook(tag: string): HogwartsMpLook {
     };
 }
 
+// What a HogwartsMP 1.11 host publishes: format 6, its live pronoun and a picked hair colour.
+function makeCurrentLook(tag: string, pronoun: "witch" | "wizard", hairColour: string): HogwartsMpLook {
+    return { ...makeLook(tag), version: 6, presets: { hairStyle: tag, hairColour }, pronoun };
+}
+
 function setup(config: TestConfig = {}) {
     let nextCharacter = 1;
     const emitted: RecordedEvent[] = [];
@@ -216,6 +221,64 @@ test("creates a character with the post-creator appearance and selects it", asyn
     assert.ok(clientEvents.some((event) => event.name === "hmp-characters:close"));
     assert.ok(clientEvents.some((event) => event.name === "hmp-characters:saved"));
     assert.ok(emitted.some((event) => event.name === "hmp:character:selected"));
+});
+
+test("saves the creator's Witch/Wizard pick and a picked hair colour with the new look", async () => {
+    const { flow, player, session, metadata, clientEvents } = setup();
+    await flow.beginCreate(player);
+    await flow.confirmCreate(player, { first: "Natsai", last: "Onai", pronoun: "witch" });
+    // The commit publishes the pronoun the game had; the pick replaces it in the saved look.
+    const character = await flow.onAppearanceChanged(player, makeCurrentLook("after", "wizard", "#4a3020"), 3);
+    assert.ok(character);
+    const saved = makeCurrentLook("after", "witch", "#4a3020");
+    assert.deepStrictEqual(metadata.get(`character:${character.id}:look`), saved);
+
+    assert.strictEqual(await flow.applyAppearance({ session, character }), true);
+    assert.deepStrictEqual(player.appliedLook, saved);
+    await flow.open(player, { mode: "wardrobe", autoCreate: false });
+    const streamed = clientEvents.find((event) => event.name === "hmp-characters:look");
+    assert.deepStrictEqual(streamed?.payload, { characterId: character.id, look: saved, transmog: "" });
+});
+
+test("keeps the published pronoun when the creator sent none or an unknown one", async () => {
+    for (const pronoun of [undefined, "dragon", "Witch"]) {
+        const { flow, player, metadata } = setup();
+        await flow.beginCreate(player);
+        await flow.confirmCreate(player, { first: "Natsai", last: "Onai", pronoun });
+        const published = makeCurrentLook("after", "wizard", "#1c1410");
+        const character = await flow.onAppearanceChanged(player, published, 3);
+        assert.ok(character);
+        assert.deepStrictEqual(metadata.get(`character:${character.id}:look`), published);
+    }
+});
+
+test("saves an older host's look without a pronoun", async () => {
+    const { flow, player, metadata } = setup();
+    await flow.beginCreate(player);
+    await flow.confirmCreate(player, { first: "Natsai", last: "Onai", pronoun: "witch" });
+    const published: HogwartsMpLook = { ...makeLook("after"), version: 4 };
+    const character = await flow.onAppearanceChanged(player, published, 3);
+    assert.ok(character);
+    const saved = metadata.get(`character:${character.id}:look`) as HogwartsMpLook;
+    assert.deepStrictEqual(saved, published);
+    assert.strictEqual("pronoun" in saved, false);
+});
+
+test("loads each character's own pronoun and hair colour across switches", async () => {
+    const { flow, core, player, session, metadata } = setup();
+    const witch = await core.characters.create(player, { name: "Poppy Sweeting" });
+    const wizard = await core.characters.create(player, { name: "Amit Thakkar" });
+    const older = await core.characters.create(player, { name: "Garreth Weasley" });
+    metadata.set(`character:${witch.id}:look`, makeCurrentLook("poppy", "witch", "#b03a2e"));
+    metadata.set(`character:${wizard.id}:look`, makeCurrentLook("amit", "wizard", "#d9c27a"));
+    // Saved before the pronoun existed: the host has it follow the body.
+    metadata.set(`character:${older.id}:look`, makeLook("garreth"));
+    for (const character of [witch, wizard, older, witch]) {
+        await flow.applyAppearance({ session, character });
+        assert.deepStrictEqual(player.appliedLook, metadata.get(`character:${character.id}:look`));
+    }
+    assert.strictEqual((player.appliedLook as HogwartsMpLook).pronoun, "witch");
+    assert.strictEqual((player.appliedLook as HogwartsMpLook).presets.hairColour, "#b03a2e");
 });
 
 test("applies stored appearance during the loading lifecycle", async () => {

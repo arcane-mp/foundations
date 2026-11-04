@@ -17,6 +17,14 @@ character session, the native Creator API validates and applies that look before
 Import remains available from every creator page. The final page also offers **Copy Look JSON**, so a
 player can design and share an appearance and then cancel without creating a character.
 
+On HogwartsMP `1.11` or newer the creator offers two more choices. The final page asks for a
+**Dormitory**, Witch or Wizard: the server saves the pick in the new character's look, and each time
+that character loads the game's dormitory staircases follow it. An imported look brings its own pick.
+Under **Hair Colour**, **Details** opens a colour picker (or a typed `#rrggbb`) that dresses the hair in
+any colour in place of the preset; the look saves it, and choosing a preset on the slider again clears
+it. While Details is closed, the custom colour being worn shows beside it. An older host
+offers neither and does not ask for a dormitory.
+
 ## Responsibilities
 
 - `hmp-core` owns character IDs, slots, account ownership and lifecycle.

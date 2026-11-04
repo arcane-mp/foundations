@@ -117,6 +117,7 @@ declare global {
         readonly format: "hogwartsmp-look";
         readonly version: number;
         readonly gender: "male" | "female";
+        /** Creator category -> preset id. From format 6, `hairColour` may be a `"#rrggbb"` colour in place of a preset. */
         readonly presets: Readonly<Record<string, string>>;
         readonly gear: readonly string[];
         readonly faceGear?: string;
@@ -129,6 +130,8 @@ declare global {
         readonly boneScales?: Readonly<Record<string, number>>;
         readonly voice?: { readonly tone: number; readonly pitch: number };
         readonly name?: { readonly first: string; readonly last: string };
+        /** Format 5: the Witch/Wizard pick the game's dormitory staircases check. Absent follows the body. */
+        readonly pronoun?: "witch" | "wizard";
         readonly hood?: boolean;
         readonly wandStyle?: string;
     }
@@ -143,6 +146,10 @@ declare global {
         readonly look: boolean;
         /** Creator API 4: the facialHair and facialHairColor categories. Absent on older clients. */
         readonly facialHair?: boolean;
+        /** Creator API 5: looks and the creator state carry the Witch/Wizard `pronoun`. Absent on older clients. */
+        readonly pronoun?: boolean;
+        /** Creator API 6: `hairColour` also takes a `"#rrggbb"` colour, in `applyPatch` and a look's presets. Absent on older clients. */
+        readonly hairColourHex?: boolean;
     }
     interface HogwartsMpCreatorCategory {
         readonly options: readonly string[];
@@ -155,12 +162,14 @@ declare global {
     }
     interface HogwartsMpCreatorState {
         readonly gender: number;
+        /** `hairColour` is a `"#rrggbb"` while a picked colour is worn. */
         readonly selections: Readonly<Record<string, string>>;
         readonly faceGear: string;
         readonly facialHair?: string;
         readonly facialHairColor?: string;
         readonly voice?: { readonly tone: number; readonly pitch: number };
         readonly name?: { readonly first: string; readonly last: string };
+        readonly pronoun?: "witch" | "wizard";
         readonly change?: { readonly category: string; readonly id: string; readonly ok: boolean };
     }
     interface HogwartsMpAppearanceOperationResult { readonly revision: number }

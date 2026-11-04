@@ -25,6 +25,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   set, and a clip or wand the body cannot take (`Character.canPlayClip`, `canHoldWand`), a malformed
   path, or a prop in the wand's own socket makes `register` throw. It needs HogwartsMP `1.11` or newer
   for `Character.create`'s `look` and `playClip`, `setWand` and `equipProp`; an older host ignores them.
+- `hmp-characters`' creator offers the Witch/Wizard pick and a free hair colour. The Finalise page's
+  Dormitory choice is saved in the new character's look, so the game's dormitory staircases follow it
+  each time that character loads, and an imported look brings its own. Under Hair Colour a colour picker
+  or a typed `#rrggbb` replaces the preset; the look saves it, and choosing a preset again clears it.
+  The shared typings declare `pronoun` on looks and creator snapshots and both creator capabilities. It
+  needs HogwartsMP `1.11` or newer for the creator's `pronoun` and `hairColourHex`; an older host
+  ignores it, and the creator shows neither and no longer asks for a dormitory it could not keep.
 
 ### Fixed
 

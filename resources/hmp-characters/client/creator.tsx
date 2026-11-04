@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createRoot } from "react-dom/client";
+import lookModule = require("../shared/look");
+
+const { hexColourOf, pronounOf } = lookModule;
 
 declare global {
     interface Window {
@@ -17,8 +20,11 @@ interface CreatorState {
     facialHairColor?: string;
     voice?: { tone: number; pitch: number };
     name?: { first: string; last: string };
+    pronoun?: "witch" | "wizard";
 }
-interface CreatorSnapshot { schema: CreatorSchema; state: CreatorState }
+interface CreatorCapabilities { pronoun?: boolean; hairColourHex?: boolean }
+interface CreatorSnapshot { schema: CreatorSchema; state: CreatorState; capabilities?: CreatorCapabilities; imported?: boolean }
+interface Hsv { h: number; s: number; v: number }
 interface CameraFrame { dist: number; height: number; pitch: number; fov: number; shift: number }
 // An optional section is hidden when the client's schema does not offer its category.
 interface Section { key: string; label: string; fallbackMax: number; optional?: boolean }
@@ -65,6 +71,9 @@ const CLEARABLE: Record<string, (state: CreatorState) => string | undefined> = {
 };
 const PANEL_W = 460;
 const PITCH_MID = 3;
+// A mid brown, about what HairColorMale007 renders as, until the player picks a colour.
+const HAIR_FALLBACK = "#8e6a4e";
+const HAIR_SEND_MS = 120;
 const isHost = typeof window.callEvent === "function";
 
 function emit(name: string, payload: unknown = {}): void {
@@ -82,13 +91,14 @@ const bridge = {
     cancel: () => emit("creator:cancel"),
     confirm: (first: string, last: string, dorm: string) => emit("creator:confirm", { first, last, dorm }),
     option: (category: string, index: number) => emit("creator:option", { category, index }),
+    hairColour: (colour: string) => emit("creator:hair-colour", { colour }),
     camera: (frame: CameraFrame) => emit("creator:camera", frame),
     rotate: (yaw: number) => emit("creator:rotate", { yaw }),
     freeze: (frozen: boolean) => emit("creator:freeze", { frozen }),
     voice: (tone: number, pitch: number) => emit("creator:voice", { tone, pitch }),
     name: (first: string, last: string) => emit("creator:name", { first, last }),
     importLook: (look: unknown) => emit("creator:import", { look }),
-    exportLook: () => emit("creator:export"),
+    exportLook: (dorm: string) => emit("creator:export", { dorm }),
 };
 
 function Slider({ value, max, onChange }: { value: number; max: number; onChange: (value: number) => void }) {
@@ -123,6 +133,84 @@ function Slider({ value, max, onChange }: { value: number; max: number; onChange
 }
 
 const buttonStyle: CSSProperties = { padding: "10px 14px", border: `1px solid ${T.goldLine}`, borderRadius: 4, background: T.panelAlt, color: T.ink, fontFamily: T.display, fontSize: 10, letterSpacing: ".14em", cursor: "pointer" };
+const fieldStyle: CSSProperties = { padding: "12px 14px", background: T.panel, border: `1px solid ${T.goldLine}`, borderRadius: 4, fontSize: 14, color: T.inkInput, outline: "none" };
+
+function hsvToHex({ h, s, v }: Hsv): string {
+    const channel = (n: number) => {
+        const k = (n + h / 60) % 6;
+        return Math.round((v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255).toString(16).padStart(2, "0");
+    };
+    return `#${channel(5)}${channel(3)}${channel(1)}`;
+}
+
+function hexToHsv(hex: string): Hsv {
+    const [r, g, b] = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255);
+    const v = Math.max(r, g, b);
+    const delta = v - Math.min(r, g, b);
+    const h = !delta ? 0 : v === r ? ((g - b) / delta + 6) % 6 : v === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+    return { h: h * 60, s: v ? delta / v : 0, v };
+}
+
+// `value` is the colour worn in place of the preset, or "" while the preset is worn.
+function HairColourPicker({ value, onPick }: { value: string; onPick: (hex: string) => void }) {
+    const [hsv, setHsv] = useState(() => hexToHsv(value || HAIR_FALLBACK));
+    const [text, setText] = useState(value || HAIR_FALLBACK);
+    const pad = useRef<HTMLDivElement>(null);
+    const strip = useRef<HTMLDivElement>(null);
+    const dragging = useRef<"pad" | "hue" | null>(null);
+    const sent = useRef({ hex: "", at: 0 });
+    const hex = hsvToHex(hsv);
+    useEffect(() => {
+        if (!dragging.current && value && value !== hex) { setHsv(hexToHsv(value)); setText(value); }
+    }, [value]);
+    const wear = (next: string) => { sent.current = { hex: next, at: Date.now() }; onPick(next); };
+    // A drag sends at most one patch per HAIR_SEND_MS, and the release sends where it settled.
+    const show = (next: Hsv, release: boolean) => {
+        const nextHex = hsvToHex(next);
+        setHsv(next);
+        setText(nextHex);
+        if (release ? nextHex !== sent.current.hex : Date.now() - sent.current.at >= HAIR_SEND_MS) wear(nextHex);
+    };
+    const point = (target: "pad" | "hue", event: ReactPointerEvent, release: boolean) => {
+        const bounds = (target === "pad" ? pad : strip).current?.getBoundingClientRect();
+        if (!bounds) return;
+        const x = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+        const y = Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height));
+        show(target === "pad" ? { ...hsv, s: x, v: 1 - y } : { ...hsv, h: x * 360 }, release);
+    };
+    const drag = (target: "pad" | "hue") => ({
+        onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => { dragging.current = target; event.currentTarget.setPointerCapture(event.pointerId); point(target, event, false); },
+        onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => { if (dragging.current === target) point(target, event, false); },
+        onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => {
+            if (dragging.current !== target) return;
+            dragging.current = null;
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            point(target, event, true);
+        },
+    });
+    const commitText = () => {
+        const typed = hexColourOf(text.startsWith("#") ? text : `#${text}`);
+        if (!typed) { setText(hex); return; }
+        setHsv(hexToHsv(typed));
+        setText(typed);
+        wear(typed);
+    };
+    const pure = hsvToHex({ h: hsv.h, s: 1, v: 1 });
+    const marker: CSSProperties = { position: "absolute", width: 14, height: 14, margin: "-7px 0 0 -7px", borderRadius: "50%", border: `2px solid ${T.inkBright}`, boxShadow: `0 0 0 1px rgba(0,0,0,.55), 0 0 10px ${T.goldGlow}`, pointerEvents: "none" };
+    return <div style={{ display: "grid", gap: 12 }}>
+        <div ref={pad} {...drag("pad")} style={{ position: "relative", height: 112, borderRadius: 4, border: `1px solid ${T.goldLine}`, background: `linear-gradient(0deg,#000,transparent),linear-gradient(90deg,#fff,${pure})`, cursor: "crosshair", touchAction: "none" }}>
+            <span style={{ ...marker, left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%`, background: hex }} />
+        </div>
+        <div ref={strip} {...drag("hue")} style={{ position: "relative", height: 14, borderRadius: 7, border: `1px solid ${T.goldLine}`, background: "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)", cursor: "pointer", touchAction: "none" }}>
+            <span style={{ ...marker, left: `${(hsv.h / 360) * 100}%`, top: "50%", background: pure }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <button className="hmp-hover" type="button" aria-label="Wear this hair colour" onClick={() => wear(hex)} style={{ flex: "none", width: 30, height: 30, borderRadius: "50%", border: `1px solid ${value ? T.gold : T.goldLine}`, background: hex, boxShadow: value ? `0 0 0 3px rgba(201,162,90,.2), 0 0 10px ${T.goldGlow}` : "none", cursor: "pointer" }} />
+            <input value={text} maxLength={7} spellCheck={false} aria-label="Hair colour as #rrggbb" onChange={(event) => setText(event.target.value.trim())} onKeyDown={(event) => { if (event.key === "Enter") commitText(); }} onBlur={() => { if (text !== hex) commitText(); }} style={{ ...fieldStyle, flex: 1, minWidth: 0, padding: "7px 12px", fontFamily: T.mono, fontSize: 12 }} />
+            <div style={{ flex: "none", width: 58, textAlign: "right", fontFamily: T.mono, fontSize: 12, color: value ? "#c2b291" : T.mutedDim }}>{value ? "CUSTOM" : "PRESET"}</div>
+        </div>
+    </div>;
+}
 
 function ImportDialog({ busy, error, onClose, onImport }: { busy: boolean; error: string; onClose: () => void; onImport: (look: unknown) => void }) {
     const [text, setText] = useState("");
@@ -165,6 +253,9 @@ function App() {
     const [first, setFirst] = useState("");
     const [last, setLast] = useState("");
     const [dorm, setDorm] = useState<"witch" | "wizard" | null>(null);
+    const [capabilities, setCapabilities] = useState<CreatorCapabilities>({});
+    const [customHair, setCustomHair] = useState("");
+    const [hairDetails, setHairDetails] = useState(false);
     const [importOpen, setImportOpen] = useState(false);
     const [importBusy, setImportBusy] = useState(false);
     const [importError, setImportError] = useState("");
@@ -173,9 +264,14 @@ function App() {
     const tab = TABS.find((candidate) => candidate.id === tabId) || TABS[0];
     const isFinalise = tab.finalise === true;
 
-    const applySnapshot = (snapshot: CreatorSnapshot) => {
+    // Only an imported look moves the dormitory pick: the game takes the pick when the saved look loads.
+    const applySnapshot = (snapshot: CreatorSnapshot, imported = false) => {
         if (!snapshot?.schema || !snapshot?.state) return;
         setSchema(snapshot.schema);
+        setCapabilities(snapshot.capabilities || {});
+        setCustomHair(hexColourOf(snapshot.state.selections?.hairColour));
+        const pronoun = pronounOf(snapshot.state.pronoun);
+        if (imported && pronoun) setDorm(pronoun);
         const next: Record<string, number> = {};
         for (const section of TABS.flatMap((entry) => entry.sections)) {
             const options = snapshot.schema.categories[section.key]?.options || [];
@@ -201,9 +297,9 @@ function App() {
     };
 
     useEffect(() => {
-        const removeOpen = hostEvent<CreatorSnapshot>("hmp-creator:open", (snapshot) => { applySnapshot(snapshot); setOpen(true); setNotice(""); });
+        const removeOpen = hostEvent<CreatorSnapshot>("hmp-creator:open", (snapshot) => { setDorm(null); applySnapshot(snapshot, snapshot?.imported === true); setOpen(true); setNotice(""); });
         const removeSnapshot = hostEvent<CreatorSnapshot>("hmp-creator:snapshot", (snapshot) => {
-            applySnapshot(snapshot);
+            applySnapshot(snapshot, importPending.current);
             if (importPending.current) {
                 importPending.current = false;
                 setImportBusy(false);
@@ -238,6 +334,7 @@ function App() {
             applySnapshot({
                 schema: { version: 1, gender: 1, categories },
                 state: { gender: 1, selections: Object.fromEntries(Object.entries(categories).filter(([key]) => !CLEARABLE[key]).map(([key, category]) => [key, category.options[0] || ""])), faceGear: "", facialHair: "", facialHairColor: "", voice: { tone: 0, pitch: 0 }, name: { first: "", last: "" } },
+                capabilities: { pronoun: true, hairColourHex: true },
             });
             setOpen(true);
         }
@@ -278,9 +375,15 @@ function App() {
         return CLEARABLE[section.key] ? count + 1 : count;
     };
     const sections = tab.sections.filter((section) => !section.optional || !schema || schema.categories[section.key]);
-    const setOption = (key: string, value: number) => { setOpts((current) => ({ ...current, [key]: value })); setNotice(""); bridge.option(key, value); };
-    const canConfirm = Boolean(first.trim() && last.trim() && dorm);
-    const field: CSSProperties = { padding: "12px 14px", background: T.panel, border: `1px solid ${T.goldLine}`, borderRadius: 4, fontSize: 14, color: T.inkInput, outline: "none" };
+    const setOption = (key: string, value: number) => {
+        setOpts((current) => ({ ...current, [key]: value }));
+        if (key === "hairColour") setCustomHair("");
+        setNotice("");
+        bridge.option(key, value);
+    };
+    const pickHair = (colour: string) => { setCustomHair(colour); setNotice(""); bridge.hairColour(colour); };
+    const askDorm = capabilities.pronoun === true;
+    const canConfirm = Boolean(first.trim() && last.trim() && (dorm || !askDorm));
     const label = (text: string) => <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}><div style={{ fontFamily: T.display, fontSize: 11, letterSpacing: ".24em", color: T.label }}>{text}</div><div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(201,162,90,.28),transparent)" }} /></div>;
     const choice = (text: string, active: boolean, action: () => void) => <button className="hmp-hover" type="button" onClick={action} style={{ position: "relative", padding: "14px 0", border: `1px solid ${active ? T.gold : T.goldLine}`, borderRadius: 5, background: active ? "rgba(201,162,90,.15)" : T.panel, color: T.ink, fontFamily: T.display, letterSpacing: ".14em", cursor: "pointer", boxShadow: active ? `0 0 14px ${T.goldGlow}` : "none" }}>{text}</button>;
 
@@ -311,12 +414,24 @@ function App() {
                     <div style={{ marginBottom: 28 }}><Slider value={pitch} max={5} onChange={(value) => { setPitch(value); bridge.voice(voice - 1, value - PITCH_MID); }} /></div>
                     {label("NAME YOUR CHARACTER")}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 26 }}>
-                        <input value={first} onChange={(event) => { setFirst(event.target.value); bridge.name(event.target.value, last); }} placeholder="First Name" style={field} />
-                        <input value={last} onChange={(event) => { setLast(event.target.value); bridge.name(first, event.target.value); }} placeholder="Last Name" style={field} />
+                        <input value={first} onChange={(event) => { setFirst(event.target.value); bridge.name(event.target.value, last); }} placeholder="First Name" style={fieldStyle} />
+                        <input value={last} onChange={(event) => { setLast(event.target.value); bridge.name(first, event.target.value); }} placeholder="Last Name" style={fieldStyle} />
                     </div>
-                    {label("DORMITORY")}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>{choice("WITCH", dorm === "witch", () => setDorm("witch"))}{choice("WIZARD", dorm === "wizard", () => setDorm("wizard"))}</div>
-                </> : sections.map((section) => <div key={section.key} style={{ marginBottom: 26 }}>{label(section.label.toUpperCase())}<Slider value={Math.min(opts[section.key] || 1, sectionMax(section))} max={sectionMax(section)} onChange={(value) => setOption(section.key, value)} /></div>)}
+                    {askDorm && <>
+                        {label("DORMITORY")}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>{choice("WITCH", dorm === "witch", () => setDorm("witch"))}{choice("WIZARD", dorm === "wizard", () => setDorm("wizard"))}</div>
+                    </>}
+                </> : sections.map((section) => <div key={section.key} style={{ marginBottom: 26 }}>
+                    {label(section.label.toUpperCase())}
+                    <Slider value={Math.min(opts[section.key] || 1, sectionMax(section))} max={sectionMax(section)} onChange={(value) => setOption(section.key, value)} />
+                    {section.key === "hairColour" && capabilities.hairColourHex && <div style={{ marginTop: 14 }}>
+                        <button className="hmp-hover" type="button" aria-expanded={hairDetails} onClick={() => setHairDetails((open) => !open)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 0, border: "none", background: "transparent", color: T.goldSoft, fontFamily: T.display, fontSize: 10, letterSpacing: ".18em", cursor: "pointer" }}>
+                            <span style={{ display: "inline-block", width: 10, fontSize: 15, transform: hairDetails ? "rotate(90deg)" : "none", transition: "transform .15s" }}>&#8250;</span>DETAILS
+                            {customHair && !hairDetails && <span style={{ marginLeft: "auto", fontFamily: T.mono, fontSize: 12, letterSpacing: 0, color: "#c2b291" }}>{customHair}</span>}
+                        </button>
+                        {hairDetails && <div style={{ marginTop: 14 }}><HairColourPicker value={customHair} onPick={pickHair} /></div>}
+                    </div>}
+                </div>)}
             </aside>
 
             <main style={{ flex: 1, position: "relative", overflow: "hidden", borderLeft: `1px solid ${T.goldLineSoft}`, background: isHost ? "transparent" : "radial-gradient(120% 86% at 64% 4%,rgba(58,72,86,.3),transparent 56%),linear-gradient(180deg,#0d0b08,#070504)" }}>
@@ -324,9 +439,9 @@ function App() {
                 {[{ left: "38%", top: "62%", delay: "0s" }, { left: "66%", top: "54%", delay: ".8s" }, { left: "54%", top: "70%", delay: "1.6s" }].map((speck, index) => <span key={index} style={{ position: "absolute", left: speck.left, top: speck.top, width: 3, height: 3, borderRadius: "50%", background: T.gold, animation: `specks ${6 + index}s ease-in-out ${speck.delay} infinite` }} />)}
                 <div style={{ position: "absolute", left: 22, top: 20 }}><div style={{ fontFamily: T.display, fontSize: 12, letterSpacing: ".18em", color: T.goldSoft }}>{tab.title}</div><div style={{ marginTop: 7, fontFamily: T.mono, fontSize: 10, color: "#7c7263" }}>HAIR {opts.hairStyle} · EYES {opts.eyeColour} · SKIN {opts.skin}</div></div>
                 {isFinalise && <div style={{ position: "absolute", left: "50%", bottom: 52, transform: "translateX(-50%)", width: "min(380px,76%)", display: "grid", gap: 10 }}>
-                    <button className="hmp-hover" type="button" onClick={bridge.exportLook} style={{ ...buttonStyle, padding: "12px 0", background: "rgba(12,9,6,.9)", color: T.goldSoft }}>COPY LOOK JSON</button>
-                    <button className="hmp-hover" type="button" disabled={!canConfirm} onClick={() => { setOpen(false); bridge.confirm(first, last, dorm || ""); }} style={{ ...buttonStyle, padding: "15px 0", background: canConfirm ? `linear-gradient(180deg,${T.goldBright},#bf9a4d)` : "#15120c", color: canConfirm ? "#1a1306" : T.mutedDim, fontSize: 15, fontWeight: 700 }}>CONFIRM</button>
-                    {!canConfirm && <div style={{ textAlign: "center", color: T.error, fontSize: 11 }}>NAME YOUR CHARACTER AND CHOOSE A DORMITORY TO CONFIRM.</div>}
+                    <button className="hmp-hover" type="button" onClick={() => bridge.exportLook(askDorm ? dorm || "" : "")} style={{ ...buttonStyle, padding: "12px 0", background: "rgba(12,9,6,.9)", color: T.goldSoft }}>COPY LOOK JSON</button>
+                    <button className="hmp-hover" type="button" disabled={!canConfirm} onClick={() => { setOpen(false); bridge.confirm(first, last, askDorm ? dorm || "" : ""); }} style={{ ...buttonStyle, padding: "15px 0", background: canConfirm ? `linear-gradient(180deg,${T.goldBright},#bf9a4d)` : "#15120c", color: canConfirm ? "#1a1306" : T.mutedDim, fontSize: 15, fontWeight: 700 }}>CONFIRM</button>
+                    {!canConfirm && <div style={{ textAlign: "center", color: T.error, fontSize: 11 }}>{askDorm ? "NAME YOUR CHARACTER AND CHOOSE A DORMITORY TO CONFIRM." : "NAME YOUR CHARACTER TO CONFIRM."}</div>}
                 </div>}
             </main>
         </div>

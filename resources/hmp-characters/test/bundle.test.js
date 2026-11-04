@@ -16,6 +16,7 @@ let creatorCommitted = 0;
 let creatorCancelled = 0;
 let nextView = 0;
 const logger = { info() {}, error() {}, warn() {}, debug() {} };
+const last = (name) => emittedToWeb.findLast((event) => event.name === name)?.payload;
 const core = {
     sessions: { get: () => null },
     characters: { list: async () => [], active: () => null, limit: () => 4 },
@@ -79,13 +80,16 @@ const creatorSchema = {
 };
 const creatorState = {
     gender: 1,
-    selections: { preset: "preset-a", hairStyle: "shared-look" },
+    selections: { preset: "preset-a", hairStyle: "shared-look", hairColour: "#4a3020" },
     faceGear: "",
     voice: { tone: 0, pitch: 0 },
     name: { first: "Natsai", last: "Onai" },
+    pronoun: "wizard",
 };
+const olderHost = { version: 3, session: true, sessionHolder: "none", schema: true, state: true, patch: true, preview: true, look: true };
+let capabilities = { ...olderHost, version: 6, facialHair: true, pronoun: true, hairColourHex: true };
 global.Creator = {
-    getCapabilities: () => ({ version: 3, session: true, sessionHolder: "none", schema: true, state: true, patch: true, preview: true, look: true }),
+    getCapabilities: () => capabilities,
     begin() { creatorBegun++; return true; },
     commit() { creatorCommitted++; return true; },
     cancel() { creatorCancelled++; return true; },
@@ -94,7 +98,7 @@ global.Creator = {
     applyPatch(patch) { patches.push(patch); return 1; },
     setVoice: () => true,
     setName: () => true,
-    exportLook: () => ({ format: "hogwartsmp-look", version: 2, gender: "female", presets: { hairStyle: "shared-look" }, gear: [] }),
+    exportLook: () => ({ format: "hogwartsmp-look", version: 6, gender: "female", presets: { hairStyle: "shared-look", hairColour: "#4a3020" }, gear: [], pronoun: "wizard" }),
     importLook(look) { importedLooks.push(look); return true; },
 };
 global.CreatorPreview = { setCamera() {}, restoreCamera() {}, rotate() {}, freeze() {}, playIdle: () => true };
@@ -132,6 +136,8 @@ assert.match(creatorPage, /creator\.js/);
 assert.match(creatorBundle, /COPY LOOK JSON/);
 assert.match(creatorBundle, /IMPORT JSON/);
 assert.match(creatorBundle, /Facial Hair Colour/);
+assert.match(creatorBundle, /creator:hair-colour/);
+assert.match(creatorBundle, /CHOOSE A DORMITORY/);
 const inlineScript = page.match(/<script>([\s\S]*?)<\/script>/);
 assert.ok(inlineScript);
 assert.doesNotThrow(() => new Function(inlineScript[1]));
@@ -171,17 +177,54 @@ setTimeout(() => {
     clientHandlers.get("creatorChanged")({});
     assert.deepStrictEqual(importedLooks, [imported]);
     clientHandlers.get("creatorChanged")({});
-    assert.ok(emittedToWeb.some((event) => event.name === "hmp-creator:open" && event.payload.schema === creatorSchema));
+    const opened = last("hmp-creator:open");
+    assert.strictEqual(opened.schema, creatorSchema);
+    assert.deepStrictEqual(opened.capabilities, { pronoun: true, hairColourHex: true });
+    assert.strictEqual(opened.imported, true);
+    assert.strictEqual(opened.state.pronoun, "wizard");
     // Slider 1 clears the clearable categories; their options start at 2.
     for (const [category, index] of [["facialHair", 1], ["facialHair", 3], ["facialHairColor", 1], ["facialHairColor", 2], ["hairStyle", 2]]) {
         webHandlers.get("creator:option")({ category, index });
     }
     assert.deepStrictEqual(patches, [{ facialHair: "" }, { facialHair: "M_Facial_zBase_WizardLong" }, { facialHairColor: "" }, { facialHairColor: "hair" }, { hairStyle: "shared-look" }]);
-    webHandlers.get("creator:export")();
-    assert.ok(emittedToWeb.some((event) => event.name === "hmp-creator:export" && JSON.parse(event.payload.json).presets.hairStyle === "shared-look"));
+    patches.length = 0;
+    webHandlers.get("creator:hair-colour")({ colour: "#4A3020" });
+    webHandlers.get("creator:hair-colour")({ colour: "brown" });
+    assert.deepStrictEqual(patches, [{ hairColour: "#4a3020" }]);
+    assert.strictEqual(last("hmp-creator:error").message, "Enter the hair colour as #rrggbb.");
+    clientHandlers.get("creatorChanged")({});
+    assert.deepStrictEqual(last("hmp-creator:snapshot").capabilities, { pronoun: true, hairColourHex: true });
+    assert.strictEqual(last("hmp-creator:snapshot").state.selections.hairColour, "#4a3020");
+    // The game takes the pick only when the saved look loads, so the copied JSON carries the page's.
+    webHandlers.get("creator:export")({ dorm: "witch" });
+    const copied = JSON.parse(last("hmp-creator:export").json);
+    assert.strictEqual(copied.presets.hairStyle, "shared-look");
+    assert.strictEqual(copied.presets.hairColour, "#4a3020");
+    assert.strictEqual(copied.pronoun, "witch");
+    webHandlers.get("creator:confirm")({ first: "Natsai", last: "Onai", dorm: "" });
+    assert.strictEqual(creatorCommitted, 0);
+    assert.strictEqual(last("hmp-creator:error").message, "Choose Witch or Wizard before confirming.");
     webHandlers.get("creator:confirm")({ first: "Natsai", last: "Onai", dorm: "witch" });
     assert.strictEqual(creatorCommitted, 1);
     assert.strictEqual(creatorCancelled, 0);
-    assert.ok(emittedToServer.some((event) => event.name === "hmp-characters:confirmed" && JSON.parse(event.payload).first === "Natsai"));
+    assert.deepStrictEqual(JSON.parse(emittedToServer.at(-1).payload), { first: "Natsai", last: "Onai", pronoun: "witch" });
+
+    // An older host offers neither: the page hides both and the client sends no pronoun.
+    capabilities = olderHost;
+    clientHandlers.get("hmp-characters:open")({ mode: "create", title: "Characters", subtitle: "Choose", characters: [], activeCharacterId: null, lastCharacterId: null, limit: 4, full: false, allowDelete: true, canClose: false });
+    clientHandlers.get("hmp-characters:create")();
+    assert.strictEqual(creatorBegun, 2);
+    clientHandlers.get("creatorChanged")({});
+    assert.deepStrictEqual(last("hmp-creator:open").capabilities, { pronoun: false, hairColourHex: false });
+    assert.strictEqual(last("hmp-creator:open").imported, false);
+    patches.length = 0;
+    webHandlers.get("creator:hair-colour")({ colour: "#4a3020" });
+    assert.deepStrictEqual(patches, []);
+    assert.strictEqual(last("hmp-creator:error").message, "This client does not support a custom hair colour.");
+    webHandlers.get("creator:export")({ dorm: "witch" });
+    assert.strictEqual(JSON.parse(last("hmp-creator:export").json).pronoun, "wizard");
+    webHandlers.get("creator:confirm")({ first: "Natsai", last: "Onai", dorm: "witch" });
+    assert.strictEqual(creatorCommitted, 2);
+    assert.deepStrictEqual(JSON.parse(emittedToServer.at(-1).payload), { first: "Natsai", last: "Onai" });
     console.log("hmp-characters bundle contract passed");
 }, 100);

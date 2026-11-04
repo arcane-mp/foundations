@@ -1,6 +1,7 @@
 import type { HmpCharacterUiModel } from "../types";
 import type { HmpCoreCharacter, HmpCoreSession } from "../../hmp-core/types";
 import type {
+    CharacterConfirmInput,
     CharacterEventPayload,
     CharacterFlowOptions,
     CharacterNameInput,
@@ -8,12 +9,15 @@ import type {
     Player,
 } from "./internal";
 import transmogsModule = require("./transmogs");
+import lookModule = require("../shared/look");
 
 const { TRANSMOG_IDS } = transmogsModule;
+const { pronounOf, withPronoun } = lookModule;
 
 interface PendingCreation {
     confirming: boolean;
     name?: string;
+    pronoun?: string;
     revision?: number;
     timer?: ReturnType<typeof setTimeout>;
 }
@@ -276,12 +280,13 @@ function createCharacterFlow(options: CharacterFlowOptions) {
         return (creatorName || fallback).slice(0, 80);
     }
 
-    async function confirmCreate(player: Player, input: CharacterNameInput): Promise<boolean> {
+    async function confirmCreate(player: Player, input: CharacterConfirmInput): Promise<boolean> {
         const id = playerId(player);
         const pending = pendingCreation.get(id);
         if (!pending || pending.confirming) throw new Error("No character creation is pending.");
         pending.confirming = true;
         pending.name = characterName(player, input);
+        pending.pronoun = pronounOf(input?.pronoun);
         pending.revision = Math.max(0, Math.trunc(Number(player.appearanceRevision)) || 0);
         pending.timer = setTimeout(() => {
             if (pendingCreation.get(id) !== pending) return;
@@ -301,7 +306,8 @@ function createCharacterFlow(options: CharacterFlowOptions) {
         try {
             if (!connected(player)) return null;
             const character = await core.characters.create(player, { name: pending.name });
-            await core.metadata.setCharacter(character.id, LOOK_KEY, publishedLook);
+            // The published look holds the pronoun the game had; the creator's pick lands when this look loads.
+            await core.metadata.setCharacter(character.id, LOOK_KEY, withPronoun(publishedLook, pending.pronoun));
             let transmog = "";
             try { transmog = String(player.getTransmog?.() || ""); }
             catch (_) { transmog = ""; }

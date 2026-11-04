@@ -2,7 +2,7 @@ import configModule = require("./config");
 import charactersModule = require("./characters");
 import startingGearModule = require("./starting-gear");
 import type { HmpCoreSession } from "../../hmp-core/types";
-import type { CharacterEventPayload, CharacterNameInput, Player } from "./internal";
+import type { CharacterConfirmInput, CharacterEventPayload, Player } from "./internal";
 
 const { loadConfig } = configModule;
 const { createCharacterFlow } = charactersModule;
@@ -55,7 +55,7 @@ Events.on("playerDisconnect", (player: unknown) => flow.disconnect(player as Pla
 Events.on("loadingFinished", (player: unknown) => flow.onLoadingFinished(player as Player));
 Events.onClient("hmp-characters:select", action((player, payload) => flow.select(player, payload?.characterId)));
 Events.onClient("hmp-characters:create", action((player) => flow.beginCreate(player)));
-Events.onClient("hmp-characters:confirmed", action((player, payload) => flow.confirmCreate(player, payload as CharacterNameInput)));
+Events.onClient("hmp-characters:confirmed", action((player, payload) => flow.confirmCreate(player, payload as CharacterConfirmInput)));
 Events.onClient("hmp-characters:cancelled", action((player) => flow.cancelCreate(player)));
 Events.onClient("hmp-characters:delete", action((player, payload) => flow.remove(player, payload?.characterId)));
 Events.onClient("hmp-characters:close", action((player) => {
