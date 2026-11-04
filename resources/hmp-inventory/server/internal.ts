@@ -31,6 +31,8 @@ export interface InventoryConfig extends Record<string, unknown> {
     allowInventoryCommand: boolean;
     items: unknown[];
     startingItems: StartingItemEntry[];
+    /** Gear slots set on each player ahead of their character's restore; null leaves the game's own. */
+    gearCapacity: number | null;
     ui: {
         url: string;
     };
@@ -117,6 +119,9 @@ export interface NativeBridge {
     give(player: Player, definition: HmpItemDefinition<Player> | null, amount: number, options?: HmpInventoryItemOptions): Promise<number>;
     remove(player: Player, definition: HmpItemDefinition<Player> | null, amount: number, options?: HmpInventoryItemOptions): Promise<number>;
     use(player: Player, definition: HmpItemDefinition<Player> | null, options?: Pick<HmpInventoryItemOptions, "variation">): Promise<boolean>;
+    /** False on a host without player.inventory.gearCapacity. */
+    setGearCapacity(player: Player, capacity: number | null): boolean;
+    gearCapacity(player: Player): number | null;
     flush(): Promise<void>;
     status(): { active: number; pendingWrites: number };
 }

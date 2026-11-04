@@ -75,6 +75,10 @@ assert.strictEqual(exportsSeen.get("items").get("native:galleons").nativeId, "Kn
 assert.strictEqual(exportsSeen.get("items").get("native:knuts").name, "native:galleons");
 assert.strictEqual(exportsSeen.get("items").fromNative("Knuts").name, "native:galleons");
 assert.strictEqual(exportsSeen.get("items").list().filter((item) => item.nativeId === "Knuts").length, 1);
+const capacityPlayer = { id: 3, inventory: { gearCapacity: null } };
+assert.strictEqual(exportsSeen.get("native").setGearCapacity(capacityPlayer, 60), true);
+assert.strictEqual(exportsSeen.get("native").gearCapacity(capacityPlayer), 60);
+assert.strictEqual(exportsSeen.get("native").setGearCapacity({ id: 4, inventory: {} }, 60), false, "a host without gearCapacity");
 
 global.Events = {
     on: (name, handler) => clientHandlers.set(name, handler),

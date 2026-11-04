@@ -93,6 +93,8 @@ declare global {
 
     interface HogwartsMpNativeInventory {
         readonly revision: number;
+        /** Gear slots (HogwartsMP 1.11 or newer), 1-200 per connection; null keeps the game's 20 plus Merlin upgrades. Set it before granting gear. */
+        gearCapacity?: number | null;
         list(): HogwartsMpNativeInventoryRow[];
         count(itemId: string): number;
         has(itemId: string, amount?: number): boolean;

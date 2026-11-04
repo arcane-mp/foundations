@@ -28,6 +28,7 @@ Configure `hmp-mysql`, then optionally create `data/hmp-inventory.json`:
   "maxWeight": 60,
   "autoSaveMs": 30000,
   "allowInventoryCommand": true,
+  "gearCapacity": null,
   "ui": {
     "url": "fw://resources/hmp-inventory/dist/index.html"
   },
@@ -35,6 +36,8 @@ Configure `hmp-mysql`, then optionally create `data/hmp-inventory.json`:
   "startingItems": []
 }
 ```
+
+`gearCapacity` is covered under [Gear capacity](#gear-capacity).
 
 Players can open the bundled UI with `/inventory` or `/hmpinv`. A future input/wheel resource can call `ui.open(player)` instead.
 
@@ -200,13 +203,33 @@ already character-scoped.
 
 This gives each HMP character an independent inventory today. When MafiaHub supplies server-validatable identities later, the account linkage in `hmp-core` can become verified without changing inventory ownership.
 
+## Gear capacity
+
+`gearCapacity` (default `null`) sets how many clothing and gear pieces each player can hold: a whole
+number from 1 to 200, or `null` for the game's own limit, 20 plus the Merlin trial upgrades. The host
+sends it ahead of the inventory rows, so `hmp-inventory` sets it on the player before every character
+load's restore, and the restored gear and any starting gear are held to it. Gear already past a lower
+capacity is kept; the game refuses only new pieces. Left at `null`, `hmp-inventory` never sets it, so a
+capacity another resource sets stands. It needs HogwartsMP `1.11` or newer for
+`player.inventory.gearCapacity`; an older host logs a warning and keeps the game's limit.
+
+To change one player's capacity at runtime, such as for a bag upgrade:
+
+```js
+hmpInventory.native.setGearCapacity(player, 60); // false on an older host; throws outside 1-200
+hmpInventory.native.gearCapacity(player);        // 60, or null for the game's own limit
+```
+
+It lasts for the connection, and with `gearCapacity` configured, the player's next character load puts
+that back. Set it before granting gear.
+
 ## Exports
 
 - `items`: `register`, `unregister`, `get`, `fromNative`, `list`
 - `inventory`: `get`, `add`, `remove`, `count`, `has`, `move`, `use`
 - `containers`: durable named-container `create`, `get`, `remove` primitives
 - `transfers`: atomic custom-item movement between character inventories and named containers
-- `native`: direct mapped native `list`, `save`, `give`, `remove`, `use`
+- `native`: direct mapped native `list`, `save`, `give`, `remove`, `use`, plus `setGearCapacity` and `gearCapacity`
 - `ui`: `open`, `close`, `refresh`, `isOpen`
 - `status`: runtime health and pending native writes
 

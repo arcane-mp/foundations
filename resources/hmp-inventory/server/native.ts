@@ -1,5 +1,10 @@
+import configModule = require("./config");
+import errorsModule = require("./errors");
 import type { HmpGearStats, HmpInventoryItemOptions, HmpItemDefinition, HmpNativeInventoryRow } from "../types";
 import type { Character, Core, Logger, NativeBridge, Player, Repository } from "./internal";
+
+const { normalizeGearCapacity } = configModule;
+const { messageOf } = errorsModule;
 
 interface NativeRowInternal extends HmpNativeInventoryRow { unique?: boolean }
 type NativeMethod = "replace" | "give" | "remove" | "use";
@@ -95,8 +100,13 @@ async function waitForApplied(player: Player, result: HogwartsMpNativeInventoryR
     return inventory.waitForRevision(revision);
 }
 
-function createNativeBridge(options: { repository: Repository; core: Core; logger: Logger }): NativeBridge {
+// player.inventory.gearCapacity is HogwartsMP 1.11 or newer.
+const hasGearCapacity = (player: Player): boolean => !!player?.inventory && "gearCapacity" in player.inventory;
+
+function createNativeBridge(options: { repository: Repository; core: Core; logger: Logger; gearCapacity?: number | null }): NativeBridge {
     const { repository, core, logger } = options;
+    const configuredGearCapacity = options.gearCapacity ?? null;
+    let warnedGearCapacity = false;
     const active = new Map<number, number>();
     const loading = new Set<number>();
     const writes = new Map<number, Promise<HmpNativeInventoryRow[]>>();
@@ -141,12 +151,37 @@ function createNativeBridge(options: { repository: Repository; core: Core; logge
         return next;
     }
 
+    // The capacity rides the inventory snapshot ahead of its rows, so it has to land before the restore.
+    function applyGearCapacity(player: Player): void {
+        if (configuredGearCapacity === null) return;
+        if (!hasGearCapacity(player)) {
+            if (!warnedGearCapacity) logger.warn("gearCapacity needs HogwartsMP 1.11 or newer for player.inventory.gearCapacity; this host keeps the game's limit");
+            warnedGearCapacity = true;
+            return;
+        }
+        try { player.inventory!.gearCapacity = configuredGearCapacity; }
+        catch (error) { logger.warn(`Could not set #${player.id}'s gear capacity: ${messageOf(error)}`); }
+    }
+
+    function setGearCapacity(player: Player, capacity: number | null): boolean {
+        const slots = normalizeGearCapacity(capacity, "gear capacity");
+        if (!hasGearCapacity(player)) return false;
+        player.inventory!.gearCapacity = slots;
+        return true;
+    }
+
+    function gearCapacity(player: Player): number | null {
+        const value = hasGearCapacity(player) ? player.inventory!.gearCapacity : null;
+        return typeof value === "number" ? value : null;
+    }
+
     async function attach(player: Player, character: Character): Promise<boolean> {
         if (!player || !character) return false;
         loading.add(player.id);
         unattached.set(player.id, false);
         try {
             const rows = sanitizeRows(await repository.loadNative(character.id));
+            applyGearCapacity(player);
             const replaced = await callbackCall(player, "replace", rows);
             // The authoritative rows are this character's from here, whether or not the client confirms them.
             unattached.delete(player.id);
@@ -221,7 +256,7 @@ function createNativeBridge(options: { repository: Repository; core: Core; logge
         await Promise.allSettled([...writes.values()]);
     }
 
-    return Object.freeze({ list, attach, save, onUpdated, onChanged, detach, give, remove, use, flush, sanitizeRows, status: () => ({ active: active.size, pendingWrites: writes.size }) });
+    return Object.freeze({ list, attach, save, onUpdated, onChanged, detach, give, remove, use, setGearCapacity, gearCapacity, flush, sanitizeRows, status: () => ({ active: active.size, pendingWrites: writes.size }) });
 }
 
 export = { createNativeBridge, sanitizeRows };

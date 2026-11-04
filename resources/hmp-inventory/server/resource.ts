@@ -152,6 +152,8 @@ function createInventoryResource(options: InventoryResourceOptions) {
             give: async (player: Player, item: string | HmpItemDefinition<Player>, amount: number, opts?: HmpNativeItemOptions) => native.give(player, typeof item === "string" ? registry.get(item) : item, amount, opts),
             remove: async (player: Player, item: string | HmpItemDefinition<Player>, amount: number, opts?: HmpNativeItemOptions) => native.remove(player, typeof item === "string" ? registry.get(item) : item, amount, opts),
             use: async (player: Player, item: string | HmpItemDefinition<Player>, opts?: Pick<HmpNativeItemOptions, "variation">) => native.use(player, typeof item === "string" ? registry.get(item) : item, opts),
+            setGearCapacity: native.setGearCapacity,
+            gearCapacity: native.gearCapacity,
         }),
         ui,
         status,

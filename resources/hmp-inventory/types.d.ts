@@ -57,6 +57,8 @@ export interface HmpNativeInventoryAdoptionOptions {
 
 export interface HmpNativeInventory {
     readonly revision: number;
+    /** HogwartsMP 1.11 or newer: gear slots, 1-200; null keeps the game's own limit. */
+    gearCapacity?: number | null;
     list(): HmpNativeInventoryRow[];
     count(itemId: string): number;
     has(itemId: string, amount?: number): boolean;
@@ -295,6 +297,14 @@ export interface HmpNativeInventoryApi<P = HmpInventoryPlayer> {
     give(player: P, item: string | HmpItemDefinition<P>, amount: number, options?: HmpNativeItemOptions): Promise<number>;
     remove(player: P, item: string | HmpItemDefinition<P>, amount: number, options?: HmpNativeItemOptions): Promise<number>;
     use(player: P, item: string | HmpItemDefinition<P>, options?: Pick<HmpNativeItemOptions, "variation">): Promise<boolean>;
+    /**
+     * Gear slots for this player's connection, 1-200, or null for the game's 20 plus Merlin upgrades. Gear
+     * past it is kept. With `gearCapacity` configured, their next character load puts that back. Throws for
+     * any other value; false on a host older than HogwartsMP 1.11.
+     */
+    setGearCapacity(player: P, capacity: number | null): boolean;
+    /** The capacity set for this player, or null for the game's own (or on an older host). */
+    gearCapacity(player: P): number | null;
 }
 
 export interface HmpInventoryUiApi<P = HmpInventoryPlayer> {

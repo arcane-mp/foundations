@@ -35,7 +35,7 @@ const registry = createItemRegistry();
 const configuredItems = config.items as Array<Record<string, unknown>>;
 const nativeItems = createNativeItems(typeof InventoryCatalog === "object" ? InventoryCatalog : null);
 for (const definition of [...nativeItems, ...configuredItems.map((item) => ({ ...item, resource: item.resource || "hmp-inventory" }))]) registry.register(definition);
-const native = createNativeBridge({ repository, core, logger });
+const native = createNativeBridge({ repository, core, logger, gearCapacity: config.gearCapacity });
 const inventory = createInventory({ repository, registry, native, core, events: Events, config });
 const transfers = createTransferService({ repository, registry, core, events: Events, config });
 const resource = createInventoryResource({

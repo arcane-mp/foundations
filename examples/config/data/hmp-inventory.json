@@ -3,6 +3,7 @@
   "maxWeight": 60,
   "autoSaveMs": 30000,
   "allowInventoryCommand": true,
+  "gearCapacity": null,
   "ui": {
     "url": "fw://resources/hmp-inventory/dist/index.html"
   },

@@ -6,6 +6,7 @@ import transfersModule = require("../server/transfers");
 import nativeModule = require("../server/native");
 import catalogModule = require("../server/native-catalog");
 import resourceModule = require("../server/resource");
+import configModule = require("../server/config");
 import type { HmpNativeInventoryRow } from "../types";
 import type { Core, Database, InventoryConfig, InventoryContainer, NativeBridge, Player, Repository } from "../server/internal";
 
@@ -15,6 +16,7 @@ const { createTransferService } = transfersModule;
 const { createNativeBridge } = nativeModule;
 const { createNativeItems } = catalogModule;
 const { createInventoryResource } = resourceModule;
+const { loadConfig } = configModule;
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -89,6 +91,8 @@ function setup() {
         async onUpdated() { return true; },
         async onChanged() { return true; },
         detach() { return true; },
+        setGearCapacity: () => false,
+        gearCapacity: () => null,
         async flush() {},
         status: () => ({ active: 0, pendingWrites: 0 }),
     };
@@ -105,6 +109,7 @@ function setup() {
         allowInventoryCommand: true,
         items: [],
         startingItems: [],
+        gearCapacity: null,
         ui: { url: "fw://resources/hmp-inventory/dist/index.html" },
     };
     const service = createInventory({ repository, registry, native, core, events, config });
@@ -360,6 +365,75 @@ test("a worn item's appearance override survives a save and restore, and a non-G
     await bridge.onUpdated(player, inventory.rows);
     await bridge.flush();
     assert.deepStrictEqual(saved.at(-1), [{ ...cloak, appearanceOverride: "Back_010_Rare" }, robe]);
+});
+
+test("gearCapacity is null by default and otherwise a whole number from 1 to 200", () => {
+    const Hmp = (loaded: Record<string, unknown>) => ({ config: { load: (_path: string, options: { defaults: Record<string, unknown> }) => ({ ...options.defaults, ...loaded }), env: { boolean: () => true } } }) as never;
+    assert.strictEqual(loadConfig(Hmp({}), { env: {} }).gearCapacity, null);
+    assert.strictEqual(loadConfig(Hmp({ gearCapacity: 40 }), { env: {} }).gearCapacity, 40);
+    for (const bad of [0, 201, 2.5, "40"]) {
+        assert.throws(() => loadConfig(Hmp({ gearCapacity: bad }), { env: {} }), /gearCapacity must be null or a whole number from 1 to 200/);
+    }
+});
+
+test("gear capacity lands ahead of a character's restore, and only where the host has it", async () => {
+    const order: string[] = [];
+    const warnings: string[] = [];
+    let capacity: number | null = null;
+    const gear = { itemId: "Back_002_Rare", holder: "ActorBackpack", count: 1, kind: "gear" as const };
+    const restorable = (withCapacity: boolean) => {
+        const inventory = {
+            revision: 1,
+            replace(rows: HmpNativeInventoryRow[], callback?: (error: null, result: { revision: number; rows: number }) => void) {
+                order.push(`replace ${rows.length}`);
+                callback?.(null, { revision: 2, rows: rows.length });
+            },
+            list: () => [],
+            waitForRevision: async (revision: number) => ({ items: [], sequence: 1, appliedRevision: revision, applyErrors: [] }),
+        };
+        if (withCapacity) Object.defineProperty(inventory, "gearCapacity", {
+            get: () => capacity,
+            set: (value: number | null) => { order.push(`gearCapacity ${value}`); capacity = value; },
+            enumerable: true,
+        });
+        return { id: 6, nickname: "Natsai", position: { x: 0, y: 0, z: 0 }, emit() {}, teleport: () => 0, inventory } as unknown as Player;
+    };
+    const repository = { loadNative: async () => [gear], saveNative: async (_id: number, rows: HmpNativeInventoryRow[]) => rows } as unknown as Repository;
+    const core = { characters: { active: () => ({ id: 9 }) } } as unknown as Core;
+    const logger = { info: () => true, warn: (message: string) => { warnings.push(message); return true; }, error: () => true };
+
+    const player = restorable(true);
+    const bridge = createNativeBridge({ repository, core, logger, gearCapacity: 40 });
+    assert.strictEqual(await bridge.attach(player, { id: 9 }), true);
+    assert.deepStrictEqual(order, ["gearCapacity 40", "replace 1"]);
+    assert.strictEqual(bridge.gearCapacity(player), 40);
+
+    // A runtime change holds until the next character load puts the configured capacity back.
+    assert.strictEqual(bridge.setGearCapacity(player, 60), true);
+    assert.strictEqual(bridge.gearCapacity(player), 60);
+    assert.strictEqual(bridge.setGearCapacity(player, null), true);
+    assert.strictEqual(bridge.gearCapacity(player), null);
+    for (const bad of [0, 201, 2.5]) assert.throws(() => bridge.setGearCapacity(player, bad), /from 1 to 200/);
+    await bridge.attach(player, { id: 10 });
+    assert.strictEqual(bridge.gearCapacity(player), 40);
+
+    // Left at null, the resource never sets it, so a capacity another resource set stands.
+    order.length = 0;
+    capacity = 80;
+    await createNativeBridge({ repository, core, logger }).attach(player, { id: 9 });
+    assert.deepStrictEqual(order, ["replace 1"]);
+    assert.strictEqual(capacity, 80);
+
+    // An older host restores as before and warns once; the export reports it could not.
+    order.length = 0;
+    const older = restorable(false);
+    const olderBridge = createNativeBridge({ repository, core, logger, gearCapacity: 40 });
+    await olderBridge.attach(older, { id: 9 });
+    await olderBridge.attach(older, { id: 10 });
+    assert.deepStrictEqual(order, ["replace 1", "replace 1"]);
+    assert.strictEqual(warnings.filter((message) => message.includes("gearCapacity needs HogwartsMP 1.11")).length, 1);
+    assert.strictEqual(olderBridge.setGearCapacity(older, 40), false);
+    assert.strictEqual(olderBridge.gearCapacity(older), null);
 });
 
 test("gear stats survive a save and restore, and a roll the host would refuse is dropped alone", async () => {

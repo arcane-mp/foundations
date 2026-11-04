@@ -87,6 +87,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   longer switches back on game loot another resource had switched off. It needs HogwartsMP `1.11` or
   newer for `World.setLootPolicy` and `LootSpots`; an older host ignores them, and a `"server"` family
   follows `suppressGameLoot`.
+- `hmp-inventory` `gearCapacity` sets how many clothing and gear pieces every player can hold, from 1 to
+  200, instead of the game's own 20 plus the Merlin trial upgrades. It reaches each player ahead of every
+  character load's restore, so their saved gear and starting gear are held to it, and gear already past
+  a lower capacity is kept. It defaults to `null`, which leaves the game's limit, as before. The `native`
+  export's `setGearCapacity(player, slots)` changes one player's for the connection, until a configured
+  `gearCapacity` comes back with their next character load. It needs HogwartsMP `1.11` or newer for
+  `player.inventory.gearCapacity`; an older host ignores it.
 
 ### Fixed
 

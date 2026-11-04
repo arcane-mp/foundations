@@ -21,6 +21,17 @@ function normalizeStartingItems(raw: unknown): StartingItemEntry[] {
     return entries;
 }
 
+// The host's range for player.inventory.gearCapacity; null keeps the game's own 20 plus Merlin upgrades.
+const MAX_GEAR_CAPACITY = 200;
+
+function normalizeGearCapacity(raw: unknown, label: string): number | null {
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1 || raw > MAX_GEAR_CAPACITY) {
+        throw new TypeError(`${label} must be null or a whole number from 1 to ${MAX_GEAR_CAPACITY}`);
+    }
+    return raw;
+}
+
 function loadConfig(Hmp: Lib, options: { env?: NodeJS.ProcessEnv; cwd?: string } = {}): InventoryConfig {
     const env = options.env || process.env;
     const cwd = options.cwd || process.cwd();
@@ -31,6 +42,7 @@ function loadConfig(Hmp: Lib, options: { env?: NodeJS.ProcessEnv; cwd?: string }
         allowInventoryCommand: true,
         items: [],
         startingItems: [],
+        gearCapacity: null,
         ui: {
             url: "fw://resources/hmp-inventory/dist/index.html",
         },
@@ -48,8 +60,9 @@ function loadConfig(Hmp: Lib, options: { env?: NodeJS.ProcessEnv; cwd?: string }
     }
     if (!Array.isArray(config.items)) throw new TypeError("hmp-inventory items must be an array");
     config.startingItems = normalizeStartingItems(config.startingItems);
+    config.gearCapacity = normalizeGearCapacity(config.gearCapacity, "hmp-inventory gearCapacity");
     return config;
 }
 
-export = { loadConfig, normalizeStartingItems };
+export = { loadConfig, normalizeStartingItems, normalizeGearCapacity };
 // TypeScript source.
