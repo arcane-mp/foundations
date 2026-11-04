@@ -1,7 +1,8 @@
 const assert = require("node:assert");
 const path = require("node:path");
 
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
+const warnings = [];
+const logger = { info() {}, warn(message) { warnings.push(message); }, error() {}, debug() {} };
 const serverExports = new Map();
 const serverHandlers = new Map();
 const playerEvents = [];
@@ -58,6 +59,8 @@ serverHandlers.get("client:hmp-world:ready")(player);
 assert.strictEqual(playerEvents[0].name, "hmp-world:policy");
 assert.ok(!("encounters" in JSON.parse(playerEvents[0].payload)));
 assert.ok(!("playerCollision" in JSON.parse(playerEvents[0].payload)));
+const gameCrowd = { density: 1, exclusions: { names: [], types: [] } };
+assert.deepStrictEqual(JSON.parse(playerEvents[0].payload).population, gameCrowd);
 serverExports.get("policy").set({ playerCollision: true });
 assert.deepStrictEqual(collisionPolicies, [false, true]);
 serverHandlers.get("playerConnect")(player);
@@ -98,8 +101,27 @@ assert.deepStrictEqual(clientEmits.map((entry) => entry.name), ["hmp-world:ready
 assert.ok(clientHandlers.has("hmp-world:policy"));
 clientHandlers.get("hmp-world:policy")(playerEvents[0].payload);
 assert.deepStrictEqual(worldCalls, [["boundaries", true], ["population", false], ["jump", true], ["sprint", true]]);
-clientHandlers.get("hmp-world:policy")({ removeBoundaryVolumes: true, ambientPopulation: false, jump: false, sprint: true });
+clientHandlers.get("hmp-world:policy")({ removeBoundaryVolumes: true, ambientPopulation: false, jump: false, sprint: true, population: gameCrowd });
 assert.deepStrictEqual(worldCalls.slice(-2), [["jump", false], ["sprint", true]]);
 assert.strictEqual(clientExports.get("policy").restore(), true);
+// HogwartsMP 1.10 has no World.setPopulationDensity: a thinned crowd is warned about once, and the rest applies.
+const thinned = { removeBoundaryVolumes: true, ambientPopulation: true, jump: true, sprint: true, population: { density: 0.4, exclusions: { names: [], types: ["vendors"] } } };
+clientHandlers.get("hmp-world:policy")(JSON.stringify(thinned));
+clientHandlers.get("hmp-world:policy")(JSON.stringify(thinned));
+assert.deepStrictEqual(worldCalls.slice(-4), [["boundaries", true], ["population", true], ["jump", true], ["sprint", true]]);
+assert.strictEqual(warnings.filter((message) => message.includes("World.setPopulationDensity")).length, 1);
 clientHandlers.get("resourceStop")("hmp-world");
+
+const clientBundle = path.resolve(__dirname, "..", "dist", "client.js");
+delete require.cache[clientBundle];
+global.World = {
+    ...global.World,
+    setPopulationDensity: (value) => { worldCalls.push(["density", value]); return value; },
+    setPopulationExclusions: (value) => { worldCalls.push(["exclusions", value]); return value; },
+};
+require(clientBundle);
+clientHandlers.get("hmp-world:policy")(JSON.stringify(thinned));
+assert.deepStrictEqual(worldCalls.slice(-2), [["density", 0.4], ["exclusions", { names: [], types: ["vendors"] }]]);
+clientHandlers.get("resourceStop")("hmp-world");
+assert.deepStrictEqual(worldCalls.slice(-2), [["density", 1], ["exclusions", { names: [], types: [] }]], "stopping hands the crowd back");
 console.log("hmp-world bundle contract passed");

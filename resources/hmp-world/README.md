@@ -33,7 +33,8 @@ the Overland's enemy encounters:
     "fastTravel": true,
     "keepHealthOnTravel": false,
     "jump": true,
-    "sprint": true
+    "sprint": true,
+    "population": { "density": 1, "exclusions": { "names": [], "types": [] } }
   }
 }
 ```
@@ -78,6 +79,23 @@ takes stays, and the host drops `hmp-world`'s when it stops. Both default to `tr
 one player, calls those `LocalPlayer` functions itself and gets a hold of its own, dropped when it stops.
 They need HogwartsMP `1.10` or newer for `LocalPlayer.setJumpEnabled` and `setSprintEnabled`; an older
 host ignores them and players keep jumping and sprinting.
+
+`population` thins and filters the game's own crowd on every client. `density`, from `0` (none) to `1`
+(the game's own, the default), is the share of the crowd each client lets out
+(`World.setPopulationDensity`): every crowd lane may have only that share of what the player's Population
+quality setting allows, and that share of the Tier-4 background extras gets through. It thins only a crowd
+`ambientPopulation: true` lets out, and one already out thins as it turns over, not at once. `exclusions`
+keeps scheduled NPCs out of the world, `ambientPopulation` on or off (`World.setPopulationExclusions`):
+`names` takes scheduled-entity names such as `GerboldOllivander`, and `types` the game's character
+subtypes (`Vendor`, `T3Student`...) or the groups `vendors`, `students` and `townsfolk`. One already
+spawned goes away within a second, and an unknown type is refused when the config loads. Nothing is
+excluded by default. While the
+policy is the game's own crowd, `hmp-world` leaves both alone, so a resource that sets its own, such as a
+density per region, keeps it; otherwise each client takes `hmp-world`'s, and is handed the game's own back
+when the policy returns to it or `hmp-world` stops. `policy.set({ population: { density: 0.3 } })` keeps
+the exclusions, and a new `exclusions` replaces both lists. They need HogwartsMP `1.11` or newer for
+`World.setPopulationDensity` and `setPopulationExclusions`; an older client logs a warning once and keeps
+the game's own crowd.
 
 `time.scale` is in-game minutes per real second: `1` gives a 24-minute in-game day and `0` freezes
 the clock. `date.year: 0` preserves the game's native year. Seasons accept `spring`, `summer`,

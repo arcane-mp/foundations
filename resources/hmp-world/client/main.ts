@@ -4,6 +4,9 @@ import type { HmpLibClient } from "../../hmp-lib/types";
 declare const World: {
     setBoundaryPolicy(remove: boolean): number;
     setAmbientPopulation(enabled: boolean): boolean;
+    /** Absent on a host older than population density and exclusions. */
+    setPopulationDensity?(density: number): number;
+    setPopulationExclusions?(exclusions: { names?: string[]; types?: string[] }): unknown;
 };
 
 const { createWorldClient } = serviceModule;
@@ -13,6 +16,7 @@ const world = createWorldClient({
     native: World,
     player: LocalPlayer,
     emitReady: () => Events.emitServer("hmp-world:ready", "{}"),
+    warn: (message: string) => logger.warn(message),
 });
 
 Exports.register("policy", world.policy);

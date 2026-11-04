@@ -28,6 +28,37 @@ export interface HmpWorldEnvironmentConfig {
  */
 export type HmpWorldEncounters = "suppressed" | "server";
 
+/**
+ * An NPC kind `population.exclusions.types` can name (host `PopulationType`): one of the game's character subtypes,
+ * or a group. `students` and `townsfolk` bundle that kind's named, crowd and Tier-4 subtypes; `vendors` is every
+ * shopkeeper.
+ */
+export type HmpWorldPopulationType =
+    | "vendors" | "students" | "townsfolk"
+    | "AmbientPortrait" | "CentaurCharacter" | "DarkWizardCharacter" | "Enforcer" | "Extra" | "Fence" | "Ghost"
+    | "GoblinCharacter" | "HouseElf" | "Howler" | "MarketingOnlyCharacter" | "OLI_Townie" | "OtherCharacter"
+    | "OtherNonCharacter" | "Pacifist" | "Player" | "PlayerFightClubAlly" | "PortraitCharacter" | "Prefect" | "Professor"
+    | "Professor_BattleOfHogwartsA" | "Professor_BattleOfHogwartsB" | "Professor_BattleOfHogwartsC"
+    | "Professor_BattleOfHogwartsD" | "SortingHatCharacter" | "Staff" | "StatueBustCharacter" | "Student"
+    | "Student_DuelAdversary1" | "Student_DuelAdversary2" | "Student_DuelAdversary3" | "Student_SelfDefense"
+    | "StudentFightClubOpponent" | "T3Authority" | "T3AzkabanPrisoner" | "T3DarkWizard" | "T3Ghost" | "T3HouseElf"
+    | "T3Student" | "T3Townsperson" | "T3Worker" | "T3YoungChild" | "T3YoungStudent" | "T4DarkWizard" | "T4Goblin"
+    | "T4Student" | "T4Townsperson" | "Townsperson" | "Vendor";
+
+/** The scheduled NPCs each client keeps out of the world, with ambient population on or off. */
+export interface HmpWorldPopulationExclusions {
+    /** Scheduled-entity names, e.g. `GerboldOllivander`. */
+    names: string[];
+    types: HmpWorldPopulationType[];
+}
+
+export interface HmpWorldPopulationPolicy {
+    /** Share of the ambient crowd each client lets out, 0 (none) to 1 (the game's own) (`World.setPopulationDensity`). */
+    density: number;
+    /** Applied by each client (`World.setPopulationExclusions`). */
+    exclusions: HmpWorldPopulationExclusions;
+}
+
 export interface HmpWorldPolicy {
     /** Destroy native mount boundary volumes, including Hogsmeade's no-fly zone. */
     removeBoundaryVolumes: boolean;
@@ -45,10 +76,17 @@ export interface HmpWorldPolicy {
     jump: boolean;
     /** Let players sprint, applied by each client as hmp-world's own hold (`LocalPlayer.setSprintEnabled`). */
     sprint: boolean;
+    /** Thin the ambient crowd and keep NPCs out of it, applied by each client; left at the game's own while default. */
+    population: HmpWorldPopulationPolicy;
 }
 
+/** What `policy.set` takes: `population` merges its keys, and `exclusions` replaces both lists. */
+export type HmpWorldPolicyPatch = Partial<Omit<HmpWorldPolicy, "population">> & {
+    population?: { density?: number; exclusions?: Partial<HmpWorldPopulationExclusions> };
+};
+
 /** The part of the policy each client applies itself. */
-export type HmpWorldClientPolicy = Pick<HmpWorldPolicy, "removeBoundaryVolumes" | "ambientPopulation" | "jump" | "sprint">;
+export type HmpWorldClientPolicy = Pick<HmpWorldPolicy, "removeBoundaryVolumes" | "ambientPopulation" | "jump" | "sprint" | "population">;
 
 export interface HmpWorldEnvironmentState {
     weather: string;
@@ -77,7 +115,7 @@ export interface HmpWorldEnvironmentApi {
 export interface HmpWorldPolicyApi<P = HmpWorldPlayer> {
     baseline(): Readonly<HmpWorldPolicy>;
     current(): Readonly<HmpWorldPolicy>;
-    set(patch: Partial<HmpWorldPolicy>): Readonly<HmpWorldPolicy>;
+    set(patch: HmpWorldPolicyPatch): Readonly<HmpWorldPolicy>;
     reset(): Readonly<HmpWorldPolicy>;
     sync(player?: P): number;
 }

@@ -1,6 +1,9 @@
 import type { HmpLibServer } from "../../hmp-lib/types";
-import type { HmpWorldEncounters, HmpWorldPlayer, HmpWorldSeason } from "../types";
-import { SEASONS, type WorldConfig } from "./internal";
+import type { HmpWorldEncounters, HmpWorldPlayer, HmpWorldPopulationPolicy, HmpWorldPopulationType, HmpWorldSeason } from "../types";
+import { POPULATION_TYPES, SEASONS, type WorldConfig } from "./internal";
+
+// The game's own crowd, which each client has until hmp-world is set otherwise.
+const DEFAULT_POPULATION: Readonly<HmpWorldPopulationPolicy> = Object.freeze({ density: 1, exclusions: Object.freeze({ names: [], types: [] }) });
 
 function finiteInteger(value: unknown, label: string, minimum: number, maximum: number): number {
     const number = Number(value);
@@ -28,6 +31,38 @@ function encounters(value: unknown, label: string): HmpWorldEncounters {
     if (value === undefined) return "suppressed";
     if (value !== "suppressed" && value !== "server") throw new TypeError(`${label} must be "suppressed" or "server"`);
     return value;
+}
+
+function exclusionList(value: unknown, label: string, known?: ReadonlySet<string>): string[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value)) throw new TypeError(`${label} must be an array of strings`);
+    const result = new Set<string>();
+    for (const entry of value) {
+        const name = typeof entry === "string" ? entry.trim() : "";
+        if (!name || name.length > 128) throw new TypeError(`${label} must hold non-empty strings up to 128 characters`);
+        if (known && !known.has(name)) throw new TypeError(`${label} has unknown type '${name}'`);
+        result.add(name);
+    }
+    return [...result];
+}
+
+// Merges onto `current`; exclusions replace both lists, as the host's do.
+function population(value: unknown, label: string, current: HmpWorldPopulationPolicy = DEFAULT_POPULATION): HmpWorldPopulationPolicy {
+    if (value !== undefined && (!value || typeof value !== "object" || Array.isArray(value))) throw new TypeError(`${label} must be an object`);
+    const raw = (value || {}) as Record<string, unknown>;
+    let exclusions = current.exclusions;
+    if (raw.exclusions !== undefined) {
+        const lists = raw.exclusions as Record<string, unknown>;
+        if (!lists || typeof lists !== "object" || Array.isArray(lists)) throw new TypeError(`${label}.exclusions must be an object`);
+        exclusions = {
+            names: exclusionList(lists.names, `${label}.exclusions.names`),
+            types: exclusionList(lists.types, `${label}.exclusions.types`, POPULATION_TYPES) as HmpWorldPopulationType[],
+        };
+    }
+    return {
+        density: raw.density === undefined ? current.density : finiteNumber(raw.density, `${label}.density`, 0, 1),
+        exclusions: { names: [...exclusions.names], types: [...exclusions.types] },
+    };
 }
 
 function weather(value: unknown): string {
@@ -80,6 +115,7 @@ function normalizeConfig(raw: unknown): WorldConfig {
             keepHealthOnTravel: boolean(policy.keepHealthOnTravel, "hmp-world policy.keepHealthOnTravel", false),
             jump: boolean(policy.jump, "hmp-world policy.jump", true),
             sprint: boolean(policy.sprint, "hmp-world policy.sprint", true),
+            population: population(policy.population, "hmp-world policy.population"),
         },
     };
 }
@@ -102,6 +138,7 @@ function loadConfig(Hmp: HmpLibServer<HmpWorldPlayer>, options: { env?: NodeJS.P
             keepHealthOnTravel: false,
             jump: true,
             sprint: true,
+            population: population(undefined, "hmp-world policy.population"),
         },
     };
     const loaded = Hmp.config.load<WorldConfig & Record<string, unknown>>(env.HMP_WORLD_CONFIG || "data/hmp-world.json", {
@@ -111,4 +148,4 @@ function loadConfig(Hmp: HmpLibServer<HmpWorldPlayer>, options: { env?: NodeJS.P
     return normalizeConfig(loaded);
 }
 
-export = { loadConfig, normalizeConfig, season };
+export = { loadConfig, normalizeConfig, season, population };

@@ -62,6 +62,14 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   refuses a slot whose spell is cooling down instead of accepting a press the game ignores. It needs
   HogwartsMP `1.11` or newer for `Spells.cooldowns`; on an older host `cooldowns()` returns `null` and
   `cast` works as before.
+- `hmp-world` `policy.population` thins and filters the game's own crowd on every client: `density`
+  (`0` to `1`) is the share of the crowd each client lets out through `World.setPopulationDensity`, and
+  `exclusions` (`names` and `types`) keeps scheduled NPCs, such as the game's vendors, out of the world
+  through `World.setPopulationExclusions`. It reaches clients as `policy.jump` does, and the client
+  `policy.current()` and `status()` carry it. It defaults to the game's own crowd (density `1`, nothing
+  excluded), which `hmp-world` leaves alone so a resource that sets its own keeps it; otherwise stopping
+  `hmp-world` hands the game's own back. It needs HogwartsMP `1.11` or newer for
+  `World.setPopulationDensity`; an older host ignores it.
 
 ### Fixed
 

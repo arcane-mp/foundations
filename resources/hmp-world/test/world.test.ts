@@ -26,6 +26,14 @@ assert.strictEqual(config.policy.jump, true);
 assert.strictEqual(config.policy.sprint, true);
 assert.throws(() => normalizeConfig({ ...config, policy: { ...config.policy, jump: "off" } }), /jump must be a boolean/);
 assert.throws(() => normalizeConfig({ ...config, policy: { ...config.policy, keepHealthOnTravel: 1 } }), /keepHealthOnTravel must be a boolean/);
+assert.deepStrictEqual(config.policy.population, { density: 1, exclusions: { names: [], types: [] } }, "the game's own crowd by default");
+const thinned = normalizeConfig({ ...config, policy: { ...config.policy, population: { density: 0.25, exclusions: { types: ["vendors", "vendors", "T3Student"], names: [" FatLady "] } } } });
+assert.deepStrictEqual(thinned.policy.population, { density: 0.25, exclusions: { names: ["FatLady"], types: ["vendors", "T3Student"] } });
+assert.deepStrictEqual(normalizeConfig({ ...config, policy: { ...config.policy, population: { exclusions: {} } } }).policy.population, { density: 1, exclusions: { names: [], types: [] } });
+assert.throws(() => normalizeConfig({ ...config, policy: { ...config.policy, population: { density: 1.5 } } }), /population\.density must be a number from 0 to 1/);
+assert.throws(() => normalizeConfig({ ...config, policy: { ...config.policy, population: { exclusions: { types: ["Shopkeeper"] } } } }), /unknown type 'Shopkeeper'/);
+assert.throws(() => normalizeConfig({ ...config, policy: { ...config.policy, population: { exclusions: { names: "FatLady" } } } }), /names must be an array/);
+assert.throws(() => normalizeConfig({ ...config, policy: { ...config.policy, population: 0.5 } }), /population must be an object/);
 assert.strictEqual(normalizeConfig({ ...config, policy: { ...config.policy, encounters: "server" } }).policy.encounters, "server");
 assert.throws(() => normalizeConfig({ ...config, policy: { ...config.policy, encounters: "native" } }), /"suppressed" or "server"/);
 assert.throws(() => normalizeConfig({ ...config, policy: { ...config.policy, removeBoundaryVolumes: "yes" } }), /boolean/);
@@ -66,7 +74,7 @@ assert.strictEqual(service.environment.state()?.season, 2);
 assert.strictEqual(service.policy.sync(players[0]), 1);
 assert.strictEqual(players[0].emitted.length, 1);
 // Clients apply only what they own; encounters stay on the server.
-assert.deepStrictEqual(JSON.parse(String((players[0].emitted[0] as { payload: unknown }).payload)), { contract: "hmp.world.policy/v3", removeBoundaryVolumes: true, ambientPopulation: false, jump: true, sprint: true });
+assert.deepStrictEqual(JSON.parse(String((players[0].emitted[0] as { payload: unknown }).payload)), { contract: "hmp.world.policy/v4", removeBoundaryVolumes: true, ambientPopulation: false, jump: true, sprint: true, population: { density: 1, exclusions: { names: [], types: [] } } });
 service.policy.set({ encounters: "server" });
 assert.strictEqual(service.policy.current().encounters, "server");
 assert.deepStrictEqual(nativeCalls.at(-1), ["encounters", "server"]);
@@ -89,9 +97,21 @@ service.policy.reset();
 assert.deepStrictEqual(nativeCalls.at(-1), ["collision", false]);
 // Jump and sprint are each client's own hold, so they ride the client policy.
 service.policy.set({ jump: false, sprint: false });
-assert.deepStrictEqual(JSON.parse(String(broadcasts.at(-1)?.payload)), { contract: "hmp.world.policy/v3", removeBoundaryVolumes: true, ambientPopulation: false, jump: false, sprint: false });
+assert.deepStrictEqual(JSON.parse(String(broadcasts.at(-1)?.payload)), { contract: "hmp.world.policy/v4", removeBoundaryVolumes: true, ambientPopulation: false, jump: false, sprint: false, population: { density: 1, exclusions: { names: [], types: [] } } });
 assert.throws(() => service.policy.set({ sprint: "no" as never }), /sprint must be a boolean/);
 service.policy.reset();
+// The crowd rides the client policy too; a population patch merges, and exclusions replace both lists.
+service.policy.set({ population: { exclusions: { types: ["vendors"], names: ["FatLady"] } } });
+service.policy.set({ population: { density: 0.3 } });
+assert.deepStrictEqual(JSON.parse(String(broadcasts.at(-1)?.payload)).population, { density: 0.3, exclusions: { names: ["FatLady"], types: ["vendors"] } });
+service.policy.set({ population: { exclusions: { types: ["students"] } } });
+assert.deepStrictEqual(service.policy.current().population, { density: 0.3, exclusions: { names: [], types: ["students"] } });
+service.policy.current().population.exclusions.types.push("vendors");
+assert.deepStrictEqual(service.policy.current().population.exclusions.types, ["students"], "current() is a copy");
+assert.throws(() => service.policy.set({ population: { density: -1 } }), /world policy population\.density must be a number from 0 to 1/);
+assert.throws(() => service.policy.set({ population: { exclusions: { types: ["Wizard" as never] } } }), /unknown type 'Wizard'/);
+service.policy.reset();
+assert.deepStrictEqual(service.policy.current().population, { density: 1, exclusions: { names: [], types: [] } });
 service.environment.setSeason("winter");
 assert.strictEqual(environmentState.season, 3);
 
@@ -155,8 +175,10 @@ health.stop();
 assert.deepStrictEqual(delver.keepHealth, [true, true, false], "stopping switches it off for those online");
 
 assert.strictEqual(parsePolicy("bad"), null);
-assert.deepStrictEqual(parsePolicy(JSON.stringify(config.policy)), { removeBoundaryVolumes: true, ambientPopulation: false, jump: true, sprint: true });
+assert.deepStrictEqual(parsePolicy(JSON.stringify(config.policy)), { removeBoundaryVolumes: true, ambientPopulation: false, jump: true, sprint: true, population: { density: 1, exclusions: { names: [], types: [] } } });
 assert.strictEqual(parsePolicy({ removeBoundaryVolumes: true, ambientPopulation: false }), null, "a v2 policy carries no jump or sprint");
+assert.strictEqual(parsePolicy({ removeBoundaryVolumes: true, ambientPopulation: false, jump: true, sprint: true }), null, "a v3 policy carries no population");
+assert.strictEqual(parsePolicy({ ...config.policy, population: { density: 2, exclusions: { names: [], types: [] } } }), null);
 const clientCalls: Array<[string, unknown]> = [];
 let ready = 0;
 const clientNative = {
@@ -175,7 +197,7 @@ assert.strictEqual(ready, 1);
 assert.strictEqual(client.apply(config.policy), true);
 assert.deepStrictEqual(clientCalls, [["boundaries", true], ["population", false], ["jump", true], ["sprint", true]]);
 assert.strictEqual(client.status().boundaryVolumesChanged, 12);
-assert.deepStrictEqual(client.policy.current(), { removeBoundaryVolumes: true, ambientPopulation: false, jump: true, sprint: true });
+assert.deepStrictEqual(client.policy.current(), { removeBoundaryVolumes: true, ambientPopulation: false, jump: true, sprint: true, population: { density: 1, exclusions: { names: [], types: [] } } });
 assert.strictEqual(client.policy.restore(), true);
 assert.strictEqual(clientCalls.length, 8);
 assert.strictEqual(client.apply({ ...config.policy, jump: false, sprint: false }), true);
@@ -188,6 +210,43 @@ assert.deepStrictEqual(clientCalls.slice(-2), [["boundaries", true], ["populatio
 olderClient.stop();
 assert.strictEqual(client.policy.restore(), false);
 assert.strictEqual(client.apply(config.policy), false);
+
+// At the game's own crowd hmp-world leaves density and exclusions alone, so a resource that sets its own
+// keeps it; another policy writes them, and a return to the game's own or a stop hands them back.
+const crowdCalls: Array<[string, unknown]> = [];
+const crowdNative = {
+    ...clientNative,
+    setPopulationDensity: (value: number) => { crowdCalls.push(["density", value]); return value; },
+    setPopulationExclusions: (value: unknown) => { crowdCalls.push(["exclusions", value]); return value; },
+};
+const crowdWarnings: string[] = [];
+const crowd = createWorldClient({ emitReady: () => {}, native: crowdNative, player: {}, warn: (message) => crowdWarnings.push(message) });
+crowd.apply(config.policy);
+crowd.policy.restore();
+assert.strictEqual(crowdCalls.length, 0);
+const thin = { ...config.policy, population: { density: 0.3, exclusions: { names: ["FatLady"], types: ["vendors"] } } };
+crowd.apply(JSON.stringify(thin));
+assert.deepStrictEqual(crowdCalls.splice(0), [["density", 0.3], ["exclusions", { names: ["FatLady"], types: ["vendors"] }]]);
+assert.deepStrictEqual(crowd.status().policy?.population, thin.population);
+crowd.policy.restore();
+assert.deepStrictEqual(crowdCalls.splice(0).map(([name]) => name), ["density", "exclusions"], "restore reapplies hmp-world's own crowd");
+crowd.apply(config.policy);
+assert.deepStrictEqual(crowdCalls.splice(0), [["density", 1], ["exclusions", { names: [], types: [] }]], "a return to the game's own hands it back once");
+crowd.apply(config.policy);
+assert.strictEqual(crowdCalls.length, 0);
+crowd.apply(thin);
+crowdCalls.length = 0;
+crowd.stop();
+assert.deepStrictEqual(crowdCalls, [["density", 1], ["exclusions", { names: [], types: [] }]], "stopping hands it back");
+assert.strictEqual(crowdWarnings.length, 0);
+// A host without them warns once when the policy asks for them, and still takes the rest.
+const olderCrowd = createWorldClient({ emitReady: () => {}, native: clientNative, player: {}, warn: (message) => crowdWarnings.push(message) });
+assert.strictEqual(olderCrowd.apply(thin), true);
+assert.strictEqual(olderCrowd.apply(thin), true);
+assert.strictEqual(crowdWarnings.length, 1);
+assert.match(crowdWarnings[0], /World\.setPopulationDensity/);
+assert.deepStrictEqual(olderCrowd.policy.current()?.population, thin.population);
+olderCrowd.stop();
 service.stop();
 
 console.log("hmp-world tests passed");

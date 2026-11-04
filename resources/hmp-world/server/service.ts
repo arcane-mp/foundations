@@ -1,12 +1,16 @@
+import configModule = require("./config");
 import type {
     HmpWorld,
     HmpWorldEnvironmentConfig,
     HmpWorldEnvironmentState,
     HmpWorldPlayer,
     HmpWorldPolicy,
+    HmpWorldPolicyPatch,
     HmpWorldSeason,
 } from "../types";
 import { SEASONS, type WorldServiceOptions } from "./internal";
+
+const { population: normalizePopulation } = configModule;
 
 type PlayerPolicy = Pick<HmpWorldPolicy, "fastTravel" | "keepHealthOnTravel">;
 
@@ -30,14 +34,15 @@ function cloneEnvironment(value: HmpWorldEnvironmentConfig): HmpWorldEnvironment
 }
 
 function clonePolicy(value: HmpWorldPolicy): HmpWorldPolicy {
-    return { ...value };
+    const { density, exclusions } = value.population;
+    return { ...value, population: { density, exclusions: { names: [...exclusions.names], types: [...exclusions.types] } } };
 }
 
 function numericSeason(value: HmpWorldSeason): 0 | 1 | 2 | 3 {
     return typeof value === "number" ? value : SEASONS[value];
 }
 
-function normalizePolicyPatch(current: HmpWorldPolicy, patch: Partial<HmpWorldPolicy>): HmpWorldPolicy {
+function normalizePolicyPatch(current: HmpWorldPolicy, patch: HmpWorldPolicyPatch): HmpWorldPolicy {
     if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new TypeError("world policy patch must be an object");
     for (const key of ["removeBoundaryVolumes", "ambientPopulation", "playerCollision", "fastTravel", "keepHealthOnTravel", "jump", "sprint"] as const) {
         if (patch[key] !== undefined && typeof patch[key] !== "boolean") throw new TypeError(`world policy ${key} must be a boolean`);
@@ -45,7 +50,7 @@ function normalizePolicyPatch(current: HmpWorldPolicy, patch: Partial<HmpWorldPo
     if (patch.encounters !== undefined && patch.encounters !== "suppressed" && patch.encounters !== "server") {
         throw new TypeError('world policy encounters must be "suppressed" or "server"');
     }
-    return { ...current, ...patch };
+    return { ...current, ...patch, population: normalizePopulation(patch.population, "world policy population", current.population) };
 }
 
 function createWorldService<P extends HmpWorldPlayer>(options: WorldServiceOptions<P>): WorldService<P> {
@@ -121,8 +126,8 @@ function createWorldService<P extends HmpWorldPlayer>(options: WorldServiceOptio
     }
 
     function policyPayload(): string {
-        const { removeBoundaryVolumes, ambientPopulation, jump, sprint } = currentPolicy;
-        return JSON.stringify({ contract: "hmp.world.policy/v3", removeBoundaryVolumes, ambientPopulation, jump, sprint });
+        const { removeBoundaryVolumes, ambientPopulation, jump, sprint, population } = currentPolicy;
+        return JSON.stringify({ contract: "hmp.world.policy/v4", removeBoundaryVolumes, ambientPopulation, jump, sprint, population });
     }
 
     function sync(player?: P): number {
@@ -136,7 +141,7 @@ function createWorldService<P extends HmpWorldPlayer>(options: WorldServiceOptio
         return players().filter((entry) => entry.connected !== false).length;
     }
 
-    function setPolicy(patch: Partial<HmpWorldPolicy>): Readonly<HmpWorldPolicy> {
+    function setPolicy(patch: HmpWorldPolicyPatch): Readonly<HmpWorldPolicy> {
         ensureReady();
         return commitPolicy(normalizePolicyPatch(currentPolicy, patch));
     }
