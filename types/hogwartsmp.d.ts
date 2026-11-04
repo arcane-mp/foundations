@@ -505,6 +505,8 @@ declare global {
         on(eventName: "playerTeleportComplete", listener: (player: HogwartsMpPlayer, requestId: number, status: number, completion: HogwartsMpTeleportCompletion) => unknown): void;
         on(eventName: "playerMapTravelComplete", listener: (player: HogwartsMpPlayer, requestId: number, status: number, completion: HogwartsMpMapTravelCompletion) => unknown): void;
         on(eventName: "playerHoldEnded", listener: (player: HogwartsMpPlayer, owner: string, reason: string) => unknown): void;
+        /** A key or Alohomora the player's client refused: on a lock the server holds (`selector`), or one only their policy locks (`selector` empty). */
+        on(eventName: "doorUnlockRequest", listener: (player: HogwartsMpPlayer, door: { selector: string; name: string; id: string }) => unknown): void;
         on(eventName: "playerMoveEnded", listener: (player: HogwartsMpPlayer, owner: string, reason: HogwartsMpPlayerMoveEnd) => unknown): void;
         /** An NPC's path reached `waypoints[index]`, before its wait; `lap` counts completed laps. */
         on(eventName: "npcWaypoint", listener: (npc: HogwartsMpNpc, index: number, lap: number) => unknown): void;

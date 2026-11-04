@@ -1,8 +1,8 @@
 import policyModule = require("./policy");
 import type { HmpDoorHeldGate, HmpDoorPlayer, HmpDoorResolution } from "../types";
-import type { DoorDependencies, DoorService } from "./internal";
+import type { DoorDependencies, DoorService, DoorUnlockRequest } from "./internal";
 
-const { evaluateRules, lockLevels } = policyModule;
+const { evaluateRules, lockLevels, pickableLocks, mayPick } = policyModule;
 const METADATA_KEY = "hmp-doors:grants";
 const messageOf = (error: unknown): string => error instanceof Error ? error.message : String(error);
 
@@ -21,6 +21,8 @@ function createDoorService<P extends HmpDoorPlayer>(dependencies: DoorDependenci
     let heldLevels = holdLockLevels();
     const hostShareUnlocks = applyShareUnlocks();
     let heldGates = holdGates();
+    const picks = pickableLocks(config.rules);
+    let heldPicks = holdPickableLocks();
 
     // A shared unlock is held for everyone and beats every player's policy. The setting is host-wide, so the
     // one found here is put back when the resource stops.
@@ -81,6 +83,39 @@ function createDoorService<P extends HmpDoorPlayer>(dependencies: DoorDependenci
             catch (error) { logger?.warn(`Could not release gate '${selector}': ${messageOf(error)}`); }
         }
         heldGates = [];
+    }
+
+    // A rule's own lock is the player's client policy, which reports a refused unlock with no selector, so only a lock
+    // the server holds can be answered with Doors.allowUnlock. Without it the rule stays a plain lock.
+    function holdPickableLocks(): string[] {
+        if (!picks.size) return [];
+        const native = dependencies.doors;
+        if (typeof native?.allowUnlock !== "function") {
+            logger?.warn("pickable rules need a HogwartsMP host with Doors.allowUnlock; those doors stay locked");
+            return [];
+        }
+        const held: string[] = [];
+        for (const selector of picks.keys()) {
+            try { if (native.set(selector, { locked: true })) held.push(selector); }
+            catch (error) { logger?.warn(`Could not hold the lock on '${selector}': ${messageOf(error)}`); }
+        }
+        return held;
+    }
+
+    function releasePickableLocks(): void {
+        for (const selector of heldPicks) {
+            try { dependencies.doors?.set(selector, { locked: null }); }
+            catch (error) { logger?.warn(`Could not release the lock on '${selector}': ${messageOf(error)}`); }
+        }
+        heldPicks = [];
+    }
+
+    async function unlockRequested(player: P, door: DoorUnlockRequest): Promise<boolean> {
+        const selector = typeof door?.selector === "string" ? door.selector : "";
+        const conditions = picks.get(selector);
+        if (stopped || !conditions || !heldPicks.includes(selector) || !core.sessions.isReady(player)) return false;
+        if (!conditions.includes(true) && !mayPick(conditions, await core.groups.effective(player))) return false;
+        return !stopped && dependencies.doors?.allowUnlock?.(player, selector) === true;
     }
 
     function activeCharacter(player: P) {
@@ -153,12 +188,14 @@ function createDoorService<P extends HmpDoorPlayer>(dependencies: DoorDependenci
     return Object.freeze({
         policy: Object.freeze({ resolve, sync, syncAll }),
         grants: Object.freeze({ list, grant, revoke, clear }),
+        unlockRequested,
         status: () => ({ state: stopped ? "stopped" as const : "ready" as const, rules: config.rules.length, syncedPlayers: synced.size, uptimeMs: now() - startedAt }),
         stop: () => {
             if (!stopped && typeof hostShareUnlocks === "boolean") dependencies.doors?.setShareUnlocks?.(hostShareUnlocks);
             stopped = true;
             synced.clear();
             releaseLockLevels();
+            releasePickableLocks();
             releaseGates();
         },
     });

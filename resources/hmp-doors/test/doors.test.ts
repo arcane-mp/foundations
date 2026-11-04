@@ -5,7 +5,7 @@ import serviceModule = require("../server/service");
 import clientModule = require("../client/doors");
 import type { HmpDoorRule } from "../types";
 
-const { evaluateRules, lockLevels } = policyModule;
+const { evaluateRules, lockLevels, pickableLocks, mayPick } = policyModule;
 const { normalizeRule, loadConfig } = configModule;
 const { createDoorService, METADATA_KEY } = serviceModule;
 const { createDoorClient, doorAnchor, normalizeLabelOptions, levelSegment } = clientModule;
@@ -78,6 +78,26 @@ async function run(): Promise<void> {
     ];
     assert.deepStrictEqual([...lockLevels(leveled)], [["Vault", 2], ["Cellar", 3]]);
     assert.strictEqual(lockLevels(rules).size, 0);
+
+    // A pickable lock is held by the server for every player, so it rides only a lock naming doors, without match.
+    assert.strictEqual(normalizeRule({ priority: 1, action: "lock", doors: ["Vault"], pickable: true, lockLevel: 2 }, 0).pickable, true);
+    assert.deepStrictEqual(normalizeRule({ priority: 1, action: "lock", doors: ["Vault"], pickable: { groups: [{ key: "Thief" }] } }, 0).pickable, { groups: [{ key: "thief", minimumGrade: 0 }], groupMode: "any" });
+    assert.throws(() => normalizeRule({ priority: 1, action: "deny", doors: ["Vault"], pickable: true }, 0), /pickable applies only to a lock rule naming doors/);
+    assert.throws(() => normalizeRule({ priority: 1, action: "lock", gates: ["BP_Gate"], pickable: true }, 0), /pickable applies only to a lock rule naming doors/);
+    assert.throws(() => normalizeRule({ priority: 1, action: "lock", doors: ["Vault"], pickable: true, match: { groups: [{ key: "staff" }] } }, 0), /cannot carry match/);
+    assert.throws(() => normalizeRule({ priority: 1, action: "lock", doors: ["Vault"], pickable: "yes" }, 0), /pickable must be true or/);
+    assert.throws(() => normalizeRule({ priority: 1, action: "lock", doors: ["Vault"], pickable: { groups: [] } }, 0), /pickable.groups must be a non-empty array/);
+    const picking = [
+        normalizeRule({ priority: 500, action: "lock", doors: ["Vault", "Cellar"], pickable: { groups: [{ key: "thief", minimumGrade: 1 }] } }, 0),
+        normalizeRule({ priority: 400, action: "lock", doors: ["Cellar"], pickable: true }, 1),
+        normalizeRule({ priority: 300, action: "lock", doors: ["Crypt"] }, 2),
+    ];
+    const picks = pickableLocks(picking);
+    assert.deepStrictEqual([...picks.keys()], ["Vault", "Cellar"], "a lock rule without pickable holds nothing");
+    assert.strictEqual(mayPick(picks.get("Vault")!, []), false);
+    assert.strictEqual(mayPick(picks.get("Vault")!, [{ key: "Thief", grade: 1 }]), true);
+    assert.strictEqual(mayPick(picks.get("Vault")!, [{ key: "thief", grade: 0 }]), false);
+    assert.strictEqual(mayPick(picks.get("Cellar")!, []), true, "any rule letting anyone pick wins");
 
     const configFrom = (file: Record<string, unknown>) => loadConfig({
         config: { load: (_path: string, options: { defaults: object }) => ({ ...options.defaults, ...file }), env: { boolean: (_value: unknown, fallback: boolean) => fallback } },
@@ -249,6 +269,46 @@ async function run(): Promise<void> {
     createDoorService({ core: core as never, config: { ...config, rules, heldGates }, players: () => [], logger }).stop();
     assert.strictEqual(warnings.length, 1);
     assert.match(warnings[0], /heldGates needs a HogwartsMP host with the server Gates builtin/);
+
+    // A pickable lock is held at start; a request on it from a player it lets pick is answered with allowUnlock.
+    warnings.length = 0;
+    const pickSets: Array<[string, unknown]> = [];
+    const allowed: Array<[unknown, string]> = [];
+    const pickHost = {
+        set: (selector: string, state: object) => { if (selector === "Bad:") throw new TypeError("refused"); pickSets.push([selector, state]); return true; },
+        get: () => null,
+        allowUnlock: (who: unknown, selector: string) => { allowed.push([who, selector]); return true; },
+    };
+    const pickRules = [...picking, normalizeRule({ priority: 1, action: "lock", doors: ["Bad:"], pickable: true }, 3)];
+    const pickService = createDoorService({ core: core as never, config: { ...config, rules: pickRules }, players: () => [player], logger, doors: pickHost });
+    assert.deepStrictEqual(pickSets, [["Vault", { locked: true }], ["Cellar", { locked: true }]]);
+    assert.deepStrictEqual(warnings, ["Could not hold the lock on 'Bad:': refused"]);
+    const request = (selector: string) => ({ selector, name: selector, id: "" });
+    assert.strictEqual(await pickService.unlockRequested(player, request("Cellar")), true);
+    assert.deepStrictEqual(allowed, [[player, "Cellar"]]);
+    // The test player is staff, not a thief, so the Vault's own rule keeps them out.
+    assert.strictEqual(await pickService.unlockRequested(player, request("Vault")), false);
+    // A lock only the player's policy holds reports no selector, and nothing answers a lock this resource does not hold.
+    assert.strictEqual(await pickService.unlockRequested(player, request("")), false);
+    assert.strictEqual(await pickService.unlockRequested(player, request("Crypt")), false);
+    assert.strictEqual(await pickService.unlockRequested(player, request("Bad:")), false);
+    sessionReady = false;
+    assert.strictEqual(await pickService.unlockRequested(player, request("Cellar")), false);
+    sessionReady = true;
+    assert.strictEqual(allowed.length, 1);
+    pickService.stop();
+    assert.deepStrictEqual(pickSets.slice(2), [["Vault", { locked: null }], ["Cellar", { locked: null }]]);
+    assert.strictEqual(await pickService.unlockRequested(player, request("Cellar")), false);
+    // A host without Doors.allowUnlock holds nothing, leaving the rules plain locks, and says so once.
+    warnings.length = 0;
+    pickSets.length = 0;
+    const olderPick = createDoorService({ core: core as never, config: { ...config, rules: picking }, players: () => [player], logger, doors: { set: pickHost.set, get: pickHost.get } });
+    assert.deepStrictEqual(pickSets, []);
+    assert.strictEqual(warnings.length, 1);
+    assert.match(warnings[0], /pickable rules need a HogwartsMP host with Doors.allowUnlock/);
+    assert.strictEqual(await olderPick.unlockRequested(player, request("Cellar")), false);
+    olderPick.stop();
+    assert.deepStrictEqual(pickSets, []);
 
     const lockCalls: Array<[string, boolean | undefined]> = [];
     const lockedCalls: Array<[string, boolean | undefined]> = [];

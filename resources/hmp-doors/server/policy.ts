@@ -1,15 +1,19 @@
 import gatesModule = require("../shared/gates");
-import type { HmpDoorGateKind, HmpDoorRule, HmpResolvedDoorPolicy } from "../types";
+import type { HmpDoorGateKind, HmpDoorMatch, HmpDoorRule, HmpResolvedDoorPolicy } from "../types";
 import type { EffectiveGroups } from "./internal";
 
 const { GATE_KINDS } = gatesModule;
 type GatePolicy = Pick<HmpResolvedDoorPolicy, "unlockGateKinds" | "openGateKinds" | "unlockGates" | "openGates" | "gateAllExcept" | "lockGates">;
 
-function applies(rule: HmpDoorRule, groups: EffectiveGroups): boolean {
-    if (!rule.match) return true;
+function matches(match: HmpDoorMatch | undefined, groups: EffectiveGroups): boolean {
+    if (!match) return true;
     const membership = new Map(groups.map((group) => [group.key.toLowerCase(), Number(group.grade) || 0]));
-    const checks = rule.match.groups.map((required) => (membership.get(required.key.toLowerCase()) ?? Number.NEGATIVE_INFINITY) >= (required.minimumGrade || 0));
-    return rule.match.groupMode === "all" ? checks.every(Boolean) : checks.some(Boolean);
+    const checks = match.groups.map((required) => (membership.get(required.key.toLowerCase()) ?? Number.NEGATIVE_INFINITY) >= (required.minimumGrade || 0));
+    return match.groupMode === "all" ? checks.every(Boolean) : checks.some(Boolean);
+}
+
+function applies(rule: HmpDoorRule, groups: EffectiveGroups): boolean {
+    return matches(rule.match, groups);
 }
 
 function verdict(rules: HmpDoorRule[]): "allow" | "deny" | "lock" | null {
@@ -121,4 +125,18 @@ function lockLevels(rules: ReadonlyArray<HmpDoorRule>): Map<string, 1 | 2 | 3> {
     return new Map([...chosen].map(([selector, held]) => [selector, held.level]));
 }
 
-export = { applies, verdict, evaluateRules, lockLevels };
+/** Each selector a pickable lock rule names, with who may pick it: `true` lets anyone. */
+function pickableLocks(rules: ReadonlyArray<HmpDoorRule>): Map<string, Array<true | HmpDoorMatch>> {
+    const picks = new Map<string, Array<true | HmpDoorMatch>>();
+    for (const rule of rules) {
+        if (!rule.pickable || !Array.isArray(rule.doors)) continue;
+        for (const selector of rule.doors) picks.set(selector, [...picks.get(selector) || [], rule.pickable]);
+    }
+    return picks;
+}
+
+function mayPick(conditions: ReadonlyArray<true | HmpDoorMatch>, groups: EffectiveGroups): boolean {
+    return conditions.some((condition) => condition === true || matches(condition, groups));
+}
+
+export = { applies, verdict, evaluateRules, lockLevels, pickableLocks, mayPick };

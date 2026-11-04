@@ -45,6 +45,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   whenever points change and left as they are on a tie. It defaults to `"game"`, leaving the banners to
   the game, and stopping `hmp-houses` hands them back. It needs HogwartsMP `1.11` or newer for
   `World.setGreatHallBanners`; an older host ignores it.
+- `hmp-doors` `pickable` on a `lock` rule naming doors lets players open those doors the game's own way,
+  with the Alohomora cast and lockpicking minigame or a key. The server holds the doors locked for every
+  player, and when one is refused a player the rule lets pick (`true` for anyone, or `{ groups }` as in
+  `match`) gets the press back; once picked, the door stays unlocked for everyone until `hmp-doors`
+  restarts. A lock rule without it still locks each door in each player's own game, which nobody can pick.
+  It needs HogwartsMP `1.11` or newer for `Doors.allowUnlock`; an older host ignores it, and the rule stays
+  a plain lock.
 
 ### Fixed
 

@@ -43,6 +43,12 @@ export interface HmpDoorRule {
      * for every player, so a rule carrying it has no `match`. Needs a HogwartsMP host with `Doors.set` `lockLevel`.
      */
     lockLevel?: 1 | 2 | 3;
+    /**
+     * On a `lock` rule naming doors: the server holds their lock for every player, so a rule carrying it has no
+     * `match`, and a player it lets pick (`true` for anyone) opens it for everyone with the game's own Alohomora
+     * and lockpicking. Needs HogwartsMP `1.11` or newer for `Doors.allowUnlock`.
+     */
+    pickable?: true | HmpDoorMatch;
     match?: HmpDoorMatch;
 }
 

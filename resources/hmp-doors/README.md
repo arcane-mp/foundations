@@ -93,6 +93,34 @@ equal priority the higher level. Levels are held when the resource starts and re
 Lock levels need HogwartsMP `1.10` or newer for `Doors.set` `lockLevel`. On an older host `hmp-doors`
 logs a warning at startup and every padlock keeps the level it shipped with.
 
+## Pickable locks
+
+`"pickable"` on a `lock` rule naming doors lets players open them the game's own way, with the Alohomora
+cast and the lockpicking minigame (a key just turns):
+
+```json
+{
+  "priority": 100,
+  "action": "lock",
+  "doors": ["BP_Door_Headmaster"],
+  "lockLevel": 2,
+  "pickable": { "groups": [{ "key": "job:thief" }] }
+}
+```
+
+A plain `lock` locks the door in each player's own game, and the host hands its own unlock back only for a lock
+the server holds. A pickable rule therefore has the server hold its doors locked for every player while
+`hmp-doors` runs, beating every other rule and personal grant on them, so it has no `match`. When a player's key
+or Alohomora on one is refused, `hmp-doors` answers through `Doors.allowUnlock` if `pickable` lets them: `true`
+lets anyone, and `{ "groups": [...], "groupMode": "any" }` only those players, as `match` does. The press goes
+through and the cast and minigame play out; a `lockLevel` on the rule still decides who may cast. Once they open
+it, the server holds the door unlocked for everyone and raises `doorUnlocked` with `shared: true`, whatever
+`shareUnlocks` says, until `hmp-doors` restarts. Given up, it stays locked; the answer lasts 60 seconds or until
+used. Name both leaves of a double door: each is answered as it refuses.
+
+Pickable locks need HogwartsMP `1.11` or newer for `Doors.allowUnlock`. On an older host `hmp-doors` logs a
+warning at startup and holds nothing, so the rule stays a plain lock.
+
 ## Shared unlocks
 
 A host that shares unlocks holds a lock a player opens by key or Alohomora unlocked for every player, under

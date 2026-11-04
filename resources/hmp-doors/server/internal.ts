@@ -5,12 +5,14 @@ import type { HmpDoorHeldGate, HmpDoorPlayer, HmpDoorRule, HmpDoorsServer } from
 /** The host's server-held door state, as far as this resource uses it. */
 export interface NativeServerDoors {
     /** An axis left out stays as it is and null releases it. A host older than `lockLevel` ignores that axis. */
-    set(selector: string, state: { lockLevel?: 1 | 2 | 3 | null }): boolean;
+    set(selector: string, state: { locked?: boolean | null; lockLevel?: 1 | 2 | 3 | null }): boolean;
     /** `lockLevel` is absent on a host older than it. */
     get(selector: string): { lockLevel?: 1 | 2 | 3 | null } | null;
     /** Whether a lock a player opens by key or Alohomora is held unlocked for everyone. Absent on an older host. */
     setShareUnlocks?(share: boolean): void;
     getShareUnlocks?(): boolean;
+    /** Lets one player open a lock the server holds with their game's own key or Alohomora. Absent on an older host. */
+    allowUnlock?(player: HmpDoorPlayer, selector: string): boolean;
 }
 
 /** Gate state the host's server `Gates` builtin holds for one selector. */
@@ -53,7 +55,16 @@ export interface DoorDependencies<P extends HmpDoorPlayer> {
     logger?: Pick<HmpLogger, "warn">;
 }
 
+/** The host's `doorUnlockRequest` payload; `selector` is empty for a lock only the player's own policy holds. */
+export interface DoorUnlockRequest {
+    selector: string;
+    name: string;
+    id: string;
+}
+
 export interface DoorService<P extends HmpDoorPlayer> extends HmpDoorsServer<P> {
+    /** Answers a request on a pickable lock this resource holds with `Doors.allowUnlock`; true once allowed. */
+    unlockRequested(player: P, door: DoorUnlockRequest): Promise<boolean>;
     stop(): void;
 }
 

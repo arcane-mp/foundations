@@ -5,7 +5,7 @@ const serverExports = new Map();
 const serverHandlers = new Map();
 const warnings = [];
 const logger = { info() {}, warn: (message) => warnings.push(message), error() {}, debug() {} };
-const lockRule = { priority: 100, action: "lock", doors: ["BP_Smoke_Door"], lockLevel: 2 };
+const lockRule = { priority: 100, action: "lock", doors: ["BP_Smoke_Door"], lockLevel: 2, pickable: true };
 const replies = [];
 const player = { id: 1, nickname: "Smoke", emit() {}, sendChat: (message) => replies.push(message) };
 const core = {
@@ -43,23 +43,31 @@ async function command(...args) {
 
 void (async () => {
     const serverBundle = path.resolve(__dirname, "..", "dist", "server.js");
-    // A host without the server Doors and Gates builtins still starts, lock-level rule, held gate and all.
+    // A host without the server Doors and Gates builtins still starts, lock-level and pickable rule, held gate and all.
     require(serverBundle);
     assert.deepStrictEqual([...serverExports.keys()], ["policy", "grants", "status"]);
     assert.ok(serverHandlers.has("client:hmp-doors:ready"));
     assert.ok(serverHandlers.has("hmp:groups:changed"));
-    assert.strictEqual(warnings.length, 2);
+    assert.ok(serverHandlers.has("doorUnlockRequest"));
+    assert.strictEqual(warnings.length, 3);
     assert.match(await command("gateset", "open", "BP_Smoke_Gate"), /needs a HogwartsMP host with the server Gates builtin/);
 
-    // A newer host gets the rule's level, unlocks kept private and the held gate at start, each given back at stop.
+    // A newer host gets the rule's level and lock, unlocks kept private and the held gate at start, each given back at stop.
     const held = [];
     const levels = new Map();
     const shares = [];
+    const allowed = [];
     global.Doors = {
-        set: (selector, state) => { held.push([selector, state]); if (state.lockLevel) levels.set(selector, state.lockLevel); else levels.delete(selector); return true; },
+        set: (selector, state) => {
+            held.push([selector, state]);
+            if (state.lockLevel) levels.set(selector, state.lockLevel);
+            else if (state.lockLevel === null) levels.delete(selector);
+            return true;
+        },
         get: (selector) => levels.has(selector) ? { selector, kind: "name", locked: null, open: null, lockLevel: levels.get(selector) } : null,
         getShareUnlocks: () => true,
         setShareUnlocks: (share) => shares.push(share),
+        allowUnlock: (who, selector) => { allowed.push([who.id, selector]); return true; },
     };
     const gateSets = [];
     const gates = new Map();
@@ -80,19 +88,23 @@ void (async () => {
     };
     delete require.cache[serverBundle];
     require(serverBundle);
-    assert.deepStrictEqual(held, [["BP_Smoke_Door", { lockLevel: 2 }]]);
+    assert.deepStrictEqual(held, [["BP_Smoke_Door", { lockLevel: 2 }], ["BP_Smoke_Door", { locked: true }]]);
+    serverHandlers.get("doorUnlockRequest")(player, { selector: "BP_Smoke_Door", name: "BP_Smoke_Door", id: "" });
+    serverHandlers.get("doorUnlockRequest")(player, { selector: "", name: "BP_Other_Door", id: "" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(allowed, [[1, "BP_Smoke_Door"]]);
     assert.deepStrictEqual(shares, [false]);
     assert.deepStrictEqual(gateSets, [["BP_Smoke_Gate", { open: true }]]);
     assert.strictEqual(await command("gateset", "locked", "BP_Smoke_Gate"), "[doors] held for everyone: BP_Smoke_Gate [name] locked=true open=true");
     assert.strictEqual(await command("gatesheld"), "[doors] 1 gate(s) held: BP_Smoke_Gate [name] locked=true open=true");
     assert.match(await command("gateset", "ajar", "BP_Smoke_Gate"), /Usage: \/doors gateset <locked\|unlocked\|open\|closed\|release>/);
     serverHandlers.get("resourceStop")("hmp-doors");
-    assert.deepStrictEqual(held.at(-1), ["BP_Smoke_Door", { lockLevel: null }]);
+    assert.deepStrictEqual(held.slice(-2), [["BP_Smoke_Door", { lockLevel: null }], ["BP_Smoke_Door", { locked: null }]]);
     assert.deepStrictEqual(shares, [false, true]);
     // Only the config's own axis is let go; the lock an admin held stays.
     assert.deepStrictEqual(gateSets.at(-1), ["BP_Smoke_Gate", { open: null }]);
     assert.deepStrictEqual(gates.get("BP_Smoke_Gate"), { locked: true });
-    assert.strictEqual(warnings.length, 2);
+    assert.strictEqual(warnings.length, 3);
 
     const clientExports = new Map();
     const clientHandlers = new Map();

@@ -1,6 +1,6 @@
 import gatesModule = require("../shared/gates");
 import type { HmpLibServer } from "../../hmp-lib/types";
-import type { HmpDoorHeldGate, HmpDoorPlayer, HmpDoorRule } from "../types";
+import type { HmpDoorHeldGate, HmpDoorMatch, HmpDoorPlayer, HmpDoorRule } from "../types";
 import type { DoorConfig } from "./internal";
 
 const { GATE_KINDS, isGateKind } = gatesModule;
@@ -9,6 +9,21 @@ function cleanId(value: unknown, label: string): string {
     const result = String(value || "").trim();
     if (!result || result.length > 200) throw new TypeError(`${label} must be a non-empty string up to 200 characters`);
     return result;
+}
+
+function normalizeMatch(raw: unknown, index: number, label: string): HmpDoorMatch {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new TypeError(`hmp-doors rule ${index} ${label} must be an object`);
+    const match = raw as Record<string, unknown>;
+    if (!Array.isArray(match.groups) || !match.groups.length) throw new TypeError(`hmp-doors rule ${index} ${label}.groups must be a non-empty array`);
+    const groups = match.groups.map((rawGroup, groupIndex) => {
+        if (!rawGroup || typeof rawGroup !== "object" || Array.isArray(rawGroup)) throw new TypeError(`rule ${index} group ${groupIndex} must be an object`);
+        const group = rawGroup as Record<string, unknown>;
+        const minimumGrade = group.minimumGrade === undefined ? 0 : Number(group.minimumGrade);
+        if (!Number.isSafeInteger(minimumGrade)) throw new TypeError(`rule ${index} group ${groupIndex} minimumGrade must be an integer`);
+        return { key: cleanId(group.key, `rule ${index} group ${groupIndex} key`).toLowerCase(), minimumGrade };
+    });
+    if (match.groupMode !== undefined && match.groupMode !== "any" && match.groupMode !== "all") throw new TypeError(`hmp-doors rule ${index} groupMode must be any or all`);
+    return { groups, groupMode: match.groupMode === "all" ? "all" : "any" };
 }
 
 function normalizeRule(raw: unknown, index: number): HmpDoorRule {
@@ -58,20 +73,14 @@ function normalizeRule(raw: unknown, index: number): HmpDoorRule {
         if (value.match !== undefined) throw new TypeError(`hmp-doors rule ${index} lockLevel is held for every player, so it cannot carry match`);
         rule.lockLevel = value.lockLevel;
     }
-    if (value.match !== undefined) {
-        if (!value.match || typeof value.match !== "object" || Array.isArray(value.match)) throw new TypeError(`hmp-doors rule ${index} match must be an object`);
-        const match = value.match as Record<string, unknown>;
-        if (!Array.isArray(match.groups) || !match.groups.length) throw new TypeError(`hmp-doors rule ${index} match.groups must be a non-empty array`);
-        const groups = match.groups.map((rawGroup, groupIndex) => {
-            if (!rawGroup || typeof rawGroup !== "object" || Array.isArray(rawGroup)) throw new TypeError(`rule ${index} group ${groupIndex} must be an object`);
-            const group = rawGroup as Record<string, unknown>;
-            const minimumGrade = group.minimumGrade === undefined ? 0 : Number(group.minimumGrade);
-            if (!Number.isSafeInteger(minimumGrade)) throw new TypeError(`rule ${index} group ${groupIndex} minimumGrade must be an integer`);
-            return { key: cleanId(group.key, `rule ${index} group ${groupIndex} key`).toLowerCase(), minimumGrade };
-        });
-        if (match.groupMode !== undefined && match.groupMode !== "any" && match.groupMode !== "all") throw new TypeError(`hmp-doors rule ${index} groupMode must be any or all`);
-        rule.match = { groups, groupMode: match.groupMode === "all" ? "all" : "any" };
+    if (value.pickable !== undefined) {
+        // Only a lock the server holds can be answered with Doors.allowUnlock, and it holds one for every player.
+        if (value.action !== "lock" || !Array.isArray(value.doors)) throw new TypeError(`hmp-doors rule ${index} pickable applies only to a lock rule naming doors`);
+        if (value.match !== undefined) throw new TypeError(`hmp-doors rule ${index} pickable holds the lock for every player, so it cannot carry match`);
+        if (value.pickable !== true && (typeof value.pickable !== "object" || value.pickable === null)) throw new TypeError(`hmp-doors rule ${index} pickable must be true or { groups, groupMode }`);
+        rule.pickable = value.pickable === true ? true : normalizeMatch(value.pickable, index, "pickable");
     }
+    if (value.match !== undefined) rule.match = normalizeMatch(value.match, index, "match");
     return rule;
 }
 

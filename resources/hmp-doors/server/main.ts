@@ -3,7 +3,7 @@ import serviceModule = require("./service");
 import type { HmpCore } from "../../hmp-core/types";
 import type { HmpLibServer } from "../../hmp-lib/types";
 import type { HmpDoorPlayer } from "../types";
-import type { NativeGateState, NativeServerDoors, NativeServerGates } from "./internal";
+import type { DoorUnlockRequest, NativeGateState, NativeServerDoors, NativeServerGates } from "./internal";
 
 declare const Doors: NativeServerDoors | undefined;
 declare const Gates: NativeServerGates | undefined;
@@ -52,6 +52,9 @@ Events.on("hmp:session:ready", (session: unknown) => {
 Events.on("hmp:character:loaded", (payload: unknown) => { const player = playerFromCharacterPayload(payload); if (player) safeSync(player); });
 Events.on("hmp:character:unloaded", (payload: unknown) => { const player = playerFromCharacterPayload(payload); if (player) safeSync(player); });
 Events.on("hmp:groups:changed", () => doors.policy.syncAll().catch((error) => logger.warn(`Could not refresh door policies: ${messageOf(error)}`)));
+Events.on("doorUnlockRequest", (player: HmpDoorPlayer, door: DoorUnlockRequest) => {
+    doors.unlockRequested(player, door).catch((error) => logger.warn(`Could not answer #${player.id}'s unlock request: ${messageOf(error)}`));
+});
 Events.on("resourceStop", (name?: string) => { if (!name || name === "hmp-doors") doors.stop(); });
 
 async function isAdmin(player: HmpDoorPlayer): Promise<boolean> {
