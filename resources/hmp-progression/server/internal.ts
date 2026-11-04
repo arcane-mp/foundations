@@ -2,6 +2,7 @@ import type { HmpCore } from "../../hmp-core/types";
 import type { HmpLogger } from "../../hmp-lib/types";
 import type { HmpMySQL, HmpMySQLMigration, HmpMySQLTransaction } from "../../hmp-mysql/types";
 import type {
+    HmpFlooFlamesApi,
     HmpManagedTalent,
     HmpProgression,
     HmpProgressionOperation,
@@ -23,6 +24,8 @@ export interface ProgressionConfig {
     maximumExperience: number;
     maximumTalentPoints: number;
     nativeRequestTimeoutMs: number;
+    /** Keep each character's lit Floo flames and light them again when it loads. */
+    flooFlames: boolean;
 }
 
 export interface RewardDraft {
@@ -63,6 +66,9 @@ export interface ProgressionRepository {
     purchaseTalent(mutation: TalentMutation): Promise<HmpManagedTalent>;
     resetTalents(characterId: number, mutation: Omit<TalentMutation, "characterId" | "talentId" | "level" | "status" | "acquisition">): Promise<number>;
     setTalentPoints(characterId: number, points: number): Promise<HmpProgressionProfile>;
+    flooFlames(characterId: number): Promise<string[]>;
+    lightFlooFlames(characterId: number, ids: string[]): Promise<number>;
+    dimFlooFlames(characterId: number, ids: string[]): Promise<number>;
 }
 
 export interface ProgressionDependencies {
@@ -77,7 +83,7 @@ export interface ProgressionDependencies {
     clearTimer?: typeof clearTimeout;
 }
 
-export interface ProgressionService extends HmpProgression<Player> {
+export interface ProgressionService extends Omit<HmpProgression<Player>, "flooFlames"> {
     start(): Promise<void>;
     characterLoaded(player: Player): Promise<void>;
     worldReady(player: Player): Promise<void>;
@@ -85,4 +91,20 @@ export interface ProgressionService extends HmpProgression<Player> {
     nativeResult(player: Player, payload: unknown): Promise<void>;
     disconnect(player: Player): boolean;
     stop(): Promise<void>;
+}
+
+export interface FlooFlameDependencies {
+    repository: Pick<ProgressionRepository, "flooFlames" | "lightFlooFlames" | "dimFlooFlames">;
+    core: Core;
+    logger: Logger;
+    enabled: boolean;
+    /** Resolves once the schema is migrated. */
+    ready(): Promise<void>;
+}
+
+export interface FlooFlames {
+    api: HmpFlooFlamesApi<Player>;
+    characterLoaded(player: Player): Promise<void>;
+    unlocked(player: Player, unlock: unknown): Promise<void>;
+    disconnect(player: Player): void;
 }

@@ -177,10 +177,27 @@ function createRepository(database: Database): ProgressionRepository {
         });
     }
 
+    async function flooFlames(characterId: number): Promise<string[]> {
+        const rows = await database.query<Array<{ destination_id: string }>>("SELECT destination_id FROM hmp_progression_floo_flames WHERE character_id = ? ORDER BY destination_id", [characterId]);
+        return rows.map((row) => row.destination_id);
+    }
+    async function lightFlooFlames(characterId: number, ids: string[]): Promise<number> {
+        if (!ids.length) return 0;
+        return database.update(
+            `INSERT IGNORE INTO hmp_progression_floo_flames (character_id, destination_id) VALUES ${ids.map(() => "(?, ?)").join(", ")}`,
+            ids.flatMap((id) => [characterId, id]),
+        );
+    }
+    async function dimFlooFlames(characterId: number, ids: string[]): Promise<number> {
+        if (!ids.length) return 0;
+        return database.update(`DELETE FROM hmp_progression_floo_flames WHERE character_id = ? AND destination_id IN (${ids.map(() => "?").join(", ")})`, [characterId, ...ids]);
+    }
+
     return Object.freeze({
         migrate: (migrations: HmpMySQLMigration[]) => database.migrate("hmp-progression", migrations),
         profile, reward, beginReward, applyReward, failReward, rewardHistory, pendingRewards, acknowledge,
         talents, talent, mutateTalent, purchaseTalent, resetTalents, setTalentPoints,
+        flooFlames, lightFlooFlames, dimFlooFlames,
     });
 }
 

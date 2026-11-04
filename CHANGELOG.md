@@ -94,6 +94,11 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   export's `setGearCapacity(player, slots)` changes one player's for the connection, until a configured
   `gearCapacity` comes back with their next character load. It needs HogwartsMP `1.11` or newer for
   `player.inventory.gearCapacity`; an older host ignores it.
+- `hmp-progression` `flooFlames` keeps the Floo flames each character lights. A flame a player finds is
+  saved for their selected character and lit again whenever that character loads, and choosing another
+  character in the same connection dims the earlier one's flames, so they never cross characters. The
+  `flooFlames` export lists and sets a character's flames. It defaults to `true`. It needs HogwartsMP
+  `1.11` or newer for `player.setFastTravelUnlocked`; an older host ignores it.
 
 ### Fixed
 

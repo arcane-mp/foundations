@@ -99,9 +99,17 @@ export interface HmpProgressionStatus {
     uptimeMs: number;
 }
 
+/** A character's lit Floo flames, by FastTravelLocations id such as `FT_HW_Boathouse`. */
+export interface HmpFlooFlamesApi<P = HmpProgressionPlayer> {
+    list(target: P | number): Promise<string[]>;
+    /** Lights the flames for the character, or dims them with `lit: false`, in game at once while it is online; resolves to its lit flames. */
+    set(target: P | number, ids: string | string[], lit?: boolean): Promise<string[]>;
+}
+
 export interface HmpProgression<P = HmpProgressionPlayer> {
     progression: HmpProgressionApi<P>;
     talents: HmpTalentsApi<P>;
+    flooFlames: HmpFlooFlamesApi<P>;
     status(): HmpProgressionStatus;
 }
 

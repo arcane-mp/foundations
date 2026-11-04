@@ -210,6 +210,8 @@ created test transaction after its state has been inspected.
   the durable ledger changes.
 - Switch characters and confirm XP, level, talent points, and managed talents do not leak. Local XP
   earned outside a server reward must not silently become durable Foundations XP.
+- On HogwartsMP `1.11` or newer, find a Floo flame, reconnect, and confirm it is lit again for that
+  character. Switch to another character and confirm the flame is dimmed unless that character found it.
 - Report duplicate XP, revision counters that never converge, talent points multiplying on travel,
   failed revocations, purchases recorded after native refusal, or any progression state crossing characters.
 

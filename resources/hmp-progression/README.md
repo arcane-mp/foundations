@@ -32,6 +32,10 @@ from the same kills are unaffected. Award durable kill experience from a server 
 - `talents.list(target, includeRevoked?)` — list Foundations-managed talent state.
 - `talents.grant`, `purchase`, `revoke`, and `reset` — manage durable talent entitlements.
 - `talents.setPoints(target, points, options)` — set the canonical unspent point pool.
+- `flooFlames.list(target)` — a character's saved Floo flames, by FastTravelLocations id.
+- `flooFlames.set(target, ids, lit?)` — light Floo flames for a character, or dim them with `false`; saved,
+  and applied in game at once while the character is online. Resolves to its lit flames. Both reject
+  while `flooFlames` is off.
 - `status()` — readiness and reconciliation diagnostics.
 
 Every XP mutation requires a stable `reference` and `resource`. Repeating the same operation with the
@@ -52,6 +56,16 @@ await progression.add(player, 250, {
 the entitlement and spends exactly one Foundations talent point. `talents.grant` is the administrative
 path: it deliberately ignores native purchase gates and costs no point. Revocations are retained as
 tombstones so a talent cannot return from the local save on reconnect.
+
+## Floo flames
+
+`flooFlames` (default `true`) keeps the Floo flames each character lights. Every connection starts from
+the game's own flames, so a fresh character has none lit. A flame the player finds by standing at it is
+saved for the selected character (`hmp_progression_floo_flames`), and when that character loads, its saved
+flames are lit again once the player's world settles. Choosing another character in the same connection
+dims the flames lit for the earlier one, so they never cross characters. A flame found with no character
+selected is not saved. It needs HogwartsMP `1.11` or newer for `player.setFastTravelUnlocked`; an older
+host logs a warning once and keeps no flames.
 
 ## Events
 

@@ -39,6 +39,12 @@ function talentId(value: unknown): string {
     return result;
 }
 
+function flameId(value: unknown): string {
+    const result = clean(typeof value === "string" ? value : "", "Floo flame id", 64);
+    if (!/^[A-Za-z0-9_]+$/.test(result)) throw new TypeError("Floo flame id may contain only letters, numbers, and underscore");
+    return result;
+}
+
 function metadata(value: unknown): Record<string, unknown> {
     if (value === undefined || value === null) return {};
     if (typeof value !== "object" || Array.isArray(value)) throw new TypeError("metadata must be an object");
@@ -47,4 +53,4 @@ function metadata(value: unknown): Record<string, unknown> {
     return JSON.parse(encoded) as Record<string, unknown>;
 }
 
-export = { clean, positiveId, nonNegative, signed, limit, reference, talentId, metadata };
+export = { clean, positiveId, nonNegative, signed, limit, reference, talentId, flameId, metadata };

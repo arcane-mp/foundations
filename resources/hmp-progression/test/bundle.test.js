@@ -31,10 +31,11 @@ global.Events = {
     emit() {},
 };
 require(path.resolve(__dirname, "..", "dist", "server.js"));
-assert.deepStrictEqual([...exportsMap.keys()], ["progression", "talents", "status"]);
+assert.deepStrictEqual([...exportsMap.keys()], ["progression", "talents", "flooFlames", "status"]);
 assert.ok(handlers.has("hmp:character:loaded"));
 assert.ok(handlers.has("worldReady"));
 assert.ok(handlers.has("playerDisconnect"));
+assert.ok(handlers.has("playerFastTravelUnlocked"));
 assert.ok(clientHandlers.has("hmp-progression:native-report"));
 assert.ok(clientHandlers.has("hmp-progression:native-result"));
 console.log("hmp-progression bundle contract passed");

@@ -1,10 +1,12 @@
 import configModule = require("./config");
+import flamesModule = require("./flames");
 import repositoryModule = require("./repository");
 import schemaModule = require("./schema");
 import serviceModule = require("./service");
 import type { Player } from "./internal";
 
 const { loadConfig } = configModule;
+const { createFlooFlames } = flamesModule;
 const { createRepository } = repositoryModule;
 const { migrations } = schemaModule;
 const { createProgressionService } = serviceModule;
@@ -17,9 +19,11 @@ const logger = Hmp.logger.create("hmp-progression");
 const config = loadConfig(Hmp);
 const repository = createRepository(database);
 const service = createProgressionService({ repository, core, events: Events, logger, config, migrations });
+const flames = createFlooFlames({ repository, core, logger, enabled: config.flooFlames, ready: service.start });
 
 Exports.register("progression", service.progression);
 Exports.register("talents", service.talents);
+Exports.register("flooFlames", flames.api);
 Exports.register("status", service.status);
 
 function loadedPlayer(payload: unknown): Player | null {
@@ -28,10 +32,16 @@ function loadedPlayer(payload: unknown): Player | null {
     return session && typeof session === "object" && "player" in session ? session.player as Player : null;
 }
 
-Events.on("hmp:character:loaded", (payload: unknown) => { const player = loadedPlayer(payload); if (player) void service.characterLoaded(player); });
+Events.on("hmp:character:loaded", (payload: unknown) => {
+    const player = loadedPlayer(payload);
+    if (!player) return;
+    void service.characterLoaded(player);
+    void flames.characterLoaded(player);
+});
 Events.on("hmp:character:unloaded", (payload: unknown) => { const player = loadedPlayer(payload); if (player) service.disconnect(player); });
 Events.on("worldReady", (player: Player) => { if (core.characters.active(player)) void service.worldReady(player); });
-Events.on("playerDisconnect", (player: Player) => service.disconnect(player));
+Events.on("playerDisconnect", (player: Player) => { service.disconnect(player); flames.disconnect(player); });
+Events.on("playerFastTravelUnlocked", (player: Player, unlock: unknown) => { void flames.unlocked(player, unlock).catch((error) => logger.warn(`Could not save #${player.id}'s Floo flame: ${messageOf(error)}`)); });
 Events.onClient("hmp-progression:native-report", (player: Player, payload: unknown) => { void service.nativeReport(player, payload).catch((error) => logger.warn(`Native report rejected: ${messageOf(error)}`)); });
 Events.onClient("hmp-progression:native-result", (player: Player, payload: unknown) => { void service.nativeResult(player, payload); });
 Events.on("resourceStop", (name?: string) => { if (!name || name === "hmp-progression") void service.stop().catch((error) => logger.error(`Shutdown failed: ${messageOf(error)}`)); });

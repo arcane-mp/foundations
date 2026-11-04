@@ -56,6 +56,19 @@ const migrations = [
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
         ],
     },
+    {
+        version: 2,
+        name: "create the per-character Floo flame ledger",
+        statements: [
+            `CREATE TABLE IF NOT EXISTS hmp_progression_floo_flames (
+                character_id BIGINT UNSIGNED NOT NULL,
+                destination_id VARCHAR(64) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (character_id, destination_id),
+                CONSTRAINT fk_hmp_progression_floo_character FOREIGN KEY (character_id) REFERENCES hmp_characters (id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+        ],
+    },
 ];
 
 export = { migrations };

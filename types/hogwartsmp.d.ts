@@ -354,6 +354,8 @@ declare global {
         /** Allows or stops this player's own fast travel from their map, for this connection. On by default. */
         setFastTravelEnabled?(on: boolean): void;
         getFastTravelEnabled?(): boolean;
+        /** Lights Floo flames by FastTravelLocations id on this player's map, for this connection, once their world settles; `false` dims them. Raises no playerFastTravelUnlocked. Throws when not connected. */
+        setFastTravelUnlocked?(ids: string | string[], unlocked?: boolean): number;
         /** Carries this player's health over map loads; a respawn after a death still starts full. Off by default. */
         setKeepHealthOnTravel?(on: boolean): void;
         getKeepHealthOnTravel?(): boolean;
@@ -519,6 +521,8 @@ declare global {
         on(eventName: "playerLocationChanged", listener: (player: HogwartsMpPlayer, current: HogwartsMpPlayerLocation | null, previous: HogwartsMpPlayerLocation | null) => unknown): void;
         /** A player's own map pick, held until every handler has run; one returning `false` refuses it. */
         on(eventName: "playerFastTravelRequest", listener: (player: HogwartsMpPlayer, request: { destinationId: string; from: "map" }) => boolean | void): void;
+        /** A Floo flame the player's own game lit as they found it; not for setFastTravelUnlocked or the flames lit at world load. Client-reported. */
+        on(eventName: "playerFastTravelUnlocked", listener: (player: HogwartsMpPlayer, unlock: { destinationId: string }) => unknown): void;
         on(eventName: "resourceStop", listener: (name?: string) => unknown): void;
         on(eventName: "pvpDefeat", listener: (victim: HogwartsMpPlayer, killer: HogwartsMpPlayer, kind: "death" | "kneel") => unknown): void;
         on(eventName: "pvpRulesChanged", listener: (rules: HogwartsMpPvpRules) => unknown): void;

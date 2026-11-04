@@ -38,7 +38,8 @@ one server-defined spell, Firestorm, which stays locked until granted (`/spells 
 needs HogwartsMP `1.10` or newer for `Spells.define`; an older host skips it with a warning. Its lesson,
 `FirestormLesson`, grants it once completed (`/spells teach me FirestormLesson`) and needs HogwartsMP
 `1.10` or newer for `SpellLearning.define`; on an older host it fails as unsupported and grants nothing.
-`hmp-progression` includes XP/talent bounds, reconciliation timeouts, and closed-test admin permissions.
+`hmp-progression` includes XP/talent bounds, reconciliation timeouts, closed-test admin permissions, and
+whether each character's lit Floo flames are kept.
 `hmp-houses` includes group projection, point-balance policy, closed-testing command permissions, no
 common-room groups, and the game's own Great Hall banners (`"leader"` hangs the House Cup leader's).
 `hmp-activities` includes bounded lobby settings and an opt-in dungeon-party-shaped test definition.
@@ -69,7 +70,8 @@ Review at minimum:
 - audio aliases, positional delivery range, handle limits, and whether `/audio` testing is enabled;
 - marker TTL/limits, whether every remote player is shown, and the player-blip tint/scale settings;
 - starter spell policy, group-gated kits, bonus loadouts, and whether `/spells` testing is enabled;
-- maximum XP/talent-point bounds and who may use progression administration commands;
+- maximum XP/talent-point bounds, who may use progression administration commands, and whether each
+  character's Floo flames are kept;
 - the house group prefix, whether standings may go negative, and who may assign houses or points;
 - activity lobby limits and expiry, and whether the non-gameplay closed-test definition remains enabled;
 - whether the `/interact outlines` zone overlay remains available;

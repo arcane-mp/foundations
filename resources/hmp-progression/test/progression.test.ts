@@ -53,6 +53,9 @@ const repository: ProgressionRepository = {
     purchaseTalent: async (mutation) => { const profile = getProfile(mutation.characterId); if (!profile.talentPoints) throw new Error("no points"); profile.talentPoints--; profile.revision++; const value = { ...mutation, status: "owned" as const, acquisition: "purchase" as const, createdAt: "now", updatedAt: "now" }; managed.set(`${mutation.characterId}:${mutation.talentId}`, value); return value; },
     resetTalents: async (id) => { let count = 0; for (const talent of managed.values()) if (talent.characterId === id && talent.status === "owned") { talent.status = "revoked"; count++; } if (count) getProfile(id).revision++; return count; },
     setTalentPoints: async (id, points) => { const profile = getProfile(id); if (profile.talentPoints !== points) { profile.talentPoints = points; profile.revision++; } return { ...profile }; },
+    flooFlames: async () => [],
+    lightFlooFlames: async () => 0,
+    dimFlooFlames: async () => 0,
 };
 
 const emitted: Array<{ name: string; args: unknown[] }> = [];
@@ -72,7 +75,7 @@ const service = createProgressionService({
         },
     },
     logger: { info() {}, warn(message: string) { warnings.push(message); }, error() {} } as never,
-    config: { enableCommands: true, command: "progression", adminGroups: [], maximumExperience: 1000, maximumTalentPoints: 10, nativeRequestTimeoutMs: 1000 },
+    config: { enableCommands: true, command: "progression", adminGroups: [], maximumExperience: 1000, maximumTalentPoints: 10, nativeRequestTimeoutMs: 1000, flooFlames: true },
     migrations: [],
 });
 
