@@ -70,6 +70,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   excluded), which `hmp-world` leaves alone so a resource that sets its own keeps it; otherwise stopping
   `hmp-world` hands the game's own back. It needs HogwartsMP `1.11` or newer for
   `World.setPopulationDensity`; an older host ignores it.
+- `hmp-audio` `dialogue` mutes the game's own spoken lines on every client by who says them (`player`,
+  `players`, `npcs`, `characters`, `world`, `floo`): each `true`, `"nonverbal"` (only the grunts,
+  breaths, laughs and gasps) or `false`, through `Audio.setDialoguePolicy`. It is applied at start, and
+  stopping `hmp-audio` hands each speaker it named back to what the host had. Other resources hold
+  speakers through the new `dialogue` export (`set`, `release`, `current`), dropped when they stop. It
+  defaults to `{}`, so every line plays. It needs HogwartsMP `1.11` or newer for
+  `Audio.setDialoguePolicy`; an older host ignores it.
 
 ### Fixed
 

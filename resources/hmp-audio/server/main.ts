@@ -26,7 +26,8 @@ function broadcastCatalog(): void {
 }
 
 audio = createAudioService({ native: Audio, config, events: Events, onCatalogChange: broadcastCatalog });
-for (const name of ["sounds", "catalog", "banks", "status"] as const) Exports.register(name, audio[name]);
+for (const name of ["sounds", "catalog", "banks", "dialogue", "status"] as const) Exports.register(name, audio[name]);
+if (Object.keys(config.dialogue).length && !audio.dialogue.current()) logger.warn("dialogue needs a HogwartsMP host with Audio.setDialoguePolicy; this host ignores it");
 
 Events.onClient("hmp-audio:ready", syncCatalog);
 Events.on("playerConnect", syncCatalog);

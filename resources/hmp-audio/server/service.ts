@@ -1,6 +1,7 @@
 import catalogModule = require("../shared/catalog");
 import banksModule = require("../shared/banks");
 import normalizeModule = require("../shared/normalize");
+import dialogueModule = require("./dialogue");
 import type {
     HmpAudioOwner,
     HmpAudioPlayback,
@@ -14,6 +15,7 @@ import type { AudioConfig, AudioEvents, NativeServerAudio } from "./internal";
 
 const { createCatalog } = catalogModule;
 const { createBankRegistry } = banksModule;
+const { createDialogueRegistry } = dialogueModule;
 const { owner: normalizeOwner, options: normalizeOptions, player: normalizePlayer, position: normalizePosition } = normalizeModule;
 
 interface ServiceDependencies<P extends HmpAudioPlayer> {
@@ -51,6 +53,7 @@ function createAudioService<P extends HmpAudioPlayer>(dependencies: ServiceDepen
         onChange: dependencies.onCatalogChange,
     });
     const bankRegistry = createBankRegistry({ load: native.loadBank.bind(native), unload: native.unloadBank.bind(native) });
+    const dialogueRegistry = createDialogueRegistry(native, config.dialogue);
 
     function publicPlayback(record: PlaybackRecord): HmpAudioPlayback {
         const { ownerKey: _ownerKey, nativeIds, timer: _timer, ...playback } = record;
@@ -188,7 +191,7 @@ function createAudioService<P extends HmpAudioPlayer>(dependencies: ServiceDepen
     }
 
     function cleanup(resource: string): number {
-        return cleanupSounds(resource) + bankRegistry.cleanup(resource) + catalogRegistry.cleanup(resource);
+        return cleanupSounds(resource) + bankRegistry.cleanup(resource) + catalogRegistry.cleanup(resource) + dialogueRegistry.cleanup(resource);
     }
 
     function get(handle: string): HmpAudioPlayback | null {
@@ -209,6 +212,7 @@ function createAudioService<P extends HmpAudioPlayer>(dependencies: ServiceDepen
         stopped = true;
         for (const record of [...playbacks.values()]) finalize(record, true);
         bankRegistry.stop();
+        dialogueRegistry.stop();
     }
 
     const sounds = Object.freeze({ playAt, playOnPlayer, playForPlayer, playForPlayers, playForAll, stop, release, cleanup: cleanupSounds, get, list });
@@ -216,6 +220,7 @@ function createAudioService<P extends HmpAudioPlayer>(dependencies: ServiceDepen
         sounds,
         catalog: catalogRegistry.api,
         banks: bankRegistry.api,
+        dialogue: dialogueRegistry.api,
         status: () => ({
             state: stopped ? "stopped" : "ready",
             activeSounds: playbacks.size,

@@ -26,7 +26,7 @@
     "files": [
       "dist/client.js"
     ],
-    "exports": ["sounds", "catalog", "banks", "status"],
+    "exports": ["sounds", "catalog", "banks", "dialogue", "status"],
     "resourceDependencies": [
       { "name": "hmp-lib", "version": "0.10.0" }
     ],

@@ -122,6 +122,35 @@ Audio.sounds.playAt(owner, "Custom_Preview_Play", previewPosition, { bank: "Ward
 Client and server expose the same `catalog`, `banks`, `status`, ownership, stop, release, get, and list
 concepts. Server handles and client-local handles are separate and cannot stop one another.
 
+## The game's own dialogue
+
+`dialogue` mutes the game's own spoken lines on every client, by who says them
+(`Audio.setDialoguePolicy`): `player` (each client's own character: spell incantations, mount and
+exploration remarks, its grunts), `players` (other players' bodies), `npcs` (NPCs from `NPC.create`),
+`characters` (Characters from `Character.create`), `world` (the game's own people, such as townsfolk,
+students, vendors and ghosts, and lines posted at a spot) and `floo` (the Floo Network's announcer). Each
+takes `true` (every line), `"nonverbal"` (only the grunts, breaths, laughs and gasps) or `false` (none). A
+muted line never starts: no sound, no subtitle, no lip movement. Players who join later get it too.
+
+```json
+"dialogue": { "world": false, "floo": false, "player": "nonverbal" }
+```
+
+The default `{}` leaves every speaker to the host, where every line plays. hmp-audio writes only the
+speakers it names: it applies them at start and hands each back to what the host had when it stops.
+Gameplay resources hold speakers through the `dialogue` export, owner-scoped like sounds and bank leases:
+
+```ts
+Audio.dialogue.set({ resource: "hmp-dueling" }, { world: false });
+Audio.dialogue.current(); // { ..., world: false, floo: true }
+Audio.dialogue.release({ resource: "hmp-dueling" });
+```
+
+A speaker takes its most recent hold, then the configured `dialogue`, then what the host had. A hold is
+dropped when its resource stops; a further `set` by the same owner merges into it. An unknown speaker or
+mode throws. It needs HogwartsMP `1.11` or newer for `Audio.setDialoguePolicy`; on an older host a
+configured `dialogue` logs a warning, `current()` is `null`, `set` returns `false`, and every line plays.
+
 ## Configuration and closed-test command
 
 Copy `examples/config/data/hmp-audio.json` to the server's `data` directory. Supported fields are:
@@ -130,7 +159,8 @@ Copy `examples/config/data/hmp-audio.json` to the server's `data` directory. Sup
 - `defaultRange` — default positional delivery range in centimetres;
 - `maxActivePerOwner` — guard against an owner leaking handles;
 - `oneShotHandleMs` — how long a one-shot remains stoppable and visible to diagnostics;
-- `enableCommands` and `command` — enable the self-scoped `/audio` test command.
+- `enableCommands` and `command` — enable the self-scoped `/audio` test command;
+- `dialogue` — the game's own spoken lines, by who says them (see above).
 
 `/audio list`, `/audio play <event> [range]`, `/audio local <event>`, `/audio stop <handle>`, and
 `/audio status` only inspect or play sounds for the caller. The resource deliberately does not ship a

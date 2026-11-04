@@ -99,6 +99,37 @@ export interface HmpAudioClientSoundsApi extends HmpAudioSoundsApiBase {
     playAt(owner: HmpAudioOwner, aliasOrEvent: string, position: HmpAudioPosition, options?: Omit<HmpAudioPlayOptions, "range">): string | null;
 }
 
+/** `true` lets every line play, `"nonverbal"` only the grunts, breaths, laughs and gasps, `false` none. */
+export type HmpAudioDialogueMode = boolean | "nonverbal";
+
+/** The game's own spoken lines on every client, by who says them (host `DialoguePolicy`). */
+export interface HmpAudioDialoguePolicy {
+    /** Each client's own character: spell incantations, mount and exploration remarks, and its grunts. */
+    player: HmpAudioDialogueMode;
+    /** Other players' bodies. */
+    players: HmpAudioDialogueMode;
+    /** NPCs from `NPC.create`: enemy taunts, callouts and combat grunts. */
+    npcs: HmpAudioDialogueMode;
+    /** Characters from `Character.create`. */
+    characters: HmpAudioDialogueMode;
+    /** The game's own people (townsfolk, students, vendors, ghosts, portraits), and lines posted at a spot. */
+    world: HmpAudioDialogueMode;
+    /** The Floo Network's announcer. */
+    floo: HmpAudioDialogueMode;
+}
+
+export interface HmpAudioDialogueApi {
+    /** What every client lets through now; null on a host without `Audio.setDialoguePolicy`. */
+    current(): HmpAudioDialoguePolicy | null;
+    /**
+     * Holds these speakers for the owner, over the configured `dialogue`; a speaker takes its most recent hold.
+     * Throws on an unknown speaker or mode; false on a host without `Audio.setDialoguePolicy`.
+     */
+    set(owner: HmpAudioOwner, patch: Partial<HmpAudioDialoguePolicy>): boolean;
+    /** Drops the owner's hold: its speakers go back to an earlier hold, the configured `dialogue`, or the host's own. */
+    release(owner: HmpAudioOwner): boolean;
+}
+
 export interface HmpAudioStatus {
     state: "ready" | "stopped";
     activeSounds: number;
@@ -112,6 +143,7 @@ export interface HmpAudioServer<P = HmpAudioPlayer> {
     sounds: HmpAudioServerSoundsApi<P>;
     catalog: HmpAudioCatalogApi;
     banks: HmpAudioBanksApi;
+    dialogue: HmpAudioDialogueApi;
     status(): HmpAudioStatus;
 }
 

@@ -1,11 +1,13 @@
 import defaultsModule = require("../shared/defaults");
 import normalizeModule = require("../shared/normalize");
+import dialogueModule = require("./dialogue");
 import type { HmpLibServer } from "../../hmp-lib/types";
 import type { HmpAudioPlayer } from "../types";
 import type { AudioConfig } from "./internal";
 
 const { aliases: defaultAliases } = defaultsModule;
 const { aliases: normalizeAliases } = normalizeModule;
+const { normalizeDialogue } = dialogueModule;
 
 function finite(value: unknown, label: string, minimum: number, maximum: number): number {
     const result = Number(value);
@@ -22,6 +24,7 @@ function loadConfig(Hmp: HmpLibServer<HmpAudioPlayer>, options: { env?: NodeJS.P
         oneShotHandleMs: 60_000,
         enableCommands: true,
         command: "audio",
+        dialogue: {},
     };
     const loaded = Hmp.config.load<AudioConfig & Record<string, unknown>>(env.HMP_AUDIO_CONFIG || "data/hmp-audio.json", {
         cwd: options.cwd || process.cwd(),
@@ -36,6 +39,7 @@ function loadConfig(Hmp: HmpLibServer<HmpAudioPlayer>, options: { env?: NodeJS.P
         oneShotHandleMs: Math.trunc(finite(env.HMP_AUDIO_HANDLE_MS ?? loaded.oneShotHandleMs, "hmp-audio oneShotHandleMs", 1_000, 3_600_000)),
         enableCommands: env.HMP_AUDIO_COMMANDS === undefined ? loaded.enableCommands !== false : Hmp.config.env.boolean(env.HMP_AUDIO_COMMANDS, true),
         command,
+        dialogue: normalizeDialogue(loaded.dialogue ?? {}, "hmp-audio dialogue"),
     };
 }
 

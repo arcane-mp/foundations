@@ -28,7 +28,8 @@ moonstones and foragables off.
 world, not catchable again.
 `hmp-npcs` includes total and per-resource limits for NPCs managed through the Foundation service.
 `hmp-emotes` includes one for curated aliases, editor groups, the `allowAll` catalog policy, and renderer selection.
-`hmp-audio` includes one for Wwise aliases, positional range, handle limits, and closed-test commands.
+`hmp-audio` includes one for Wwise aliases, positional range, handle limits, closed-test commands, and the
+game's own dialogue, left to the host (`dialogue: {}`).
 `hmp-blips` includes one for marker lifetimes, player visibility, native tint/scale, and private probes.
 `hmp-spells` includes a closed-testing starter kit, group rules, admin commands, cast-report limits, and
 one server-defined spell, Firestorm, which stays locked until granted (`/spells grant me Firestorm`) and

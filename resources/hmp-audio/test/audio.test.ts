@@ -1,9 +1,11 @@
 import assert = require("node:assert");
 import serverModule = require("../server/service");
 import clientModule = require("../client/service");
-import type { HmpAudioPlayer } from "../types";
+import dialogueModule = require("../server/dialogue");
+import type { HmpAudioDialoguePolicy, HmpAudioPlayer } from "../types";
 
 const { createAudioService } = serverModule;
+const { normalizeDialogue } = dialogueModule;
 const { createAudioClient } = clientModule;
 
 function run(): void {
@@ -31,6 +33,7 @@ function run(): void {
             oneShotHandleMs: 5000,
             enableCommands: false,
             command: "audio",
+            dialogue: {},
         },
         events: { emit: (name, payload) => emitted.push({ name, payload }) },
         now: () => 1000,
@@ -113,7 +116,47 @@ function run(): void {
     client.cleanup("hmp-test");
     assert.strictEqual(clientCalls.filter((call) => call.name === "unload").length, 1);
     client.stop();
+
+    // HogwartsMP 1.10 has no Audio.setDialoguePolicy: there is no policy to read, and a hold changes nothing.
+    assert.strictEqual(service.dialogue.current(), null);
+    assert.strictEqual(service.dialogue.set(owner, { world: false }), false);
+    assert.throws(() => service.dialogue.set(owner, { crowd: false } as never), /unknown speaker 'crowd'/);
     service.stop();
+
+    assert.deepStrictEqual(normalizeDialogue({ floo: false, player: "nonverbal", world: undefined }, "dialogue"), { floo: false, player: "nonverbal" });
+    assert.throws(() => normalizeDialogue({ npcs: "off" }, "hmp-audio dialogue"), /hmp-audio dialogue\.npcs must be true, false or "nonverbal"/);
+    assert.throws(() => normalizeDialogue([], "hmp-audio dialogue"), /must be an object/);
+
+    // The policy is one world setting: hmp-audio writes only what its config and holds name, and hands each
+    // speaker back to the host's own once nothing here names it.
+    const host: HmpAudioDialoguePolicy = { player: true, players: true, npcs: true, characters: true, world: true, floo: true };
+    const writes: Array<Partial<HmpAudioDialoguePolicy>> = [];
+    const speaking = createAudioService<HmpAudioPlayer>({
+        native: {
+            ...native,
+            get dialoguePolicy() { return { ...host }; },
+            setDialoguePolicy: (patch: Partial<HmpAudioDialoguePolicy>) => { writes.push(patch); Object.assign(host, patch); return true; },
+        },
+        config: { aliases: { click: "UI_Menu_Select" }, defaultRange: 1, maxActivePerOwner: 1, oneShotHandleMs: 1000, enableCommands: false, command: "audio", dialogue: { floo: false } },
+    });
+    assert.deepStrictEqual(writes.splice(0), [{ floo: false }], "the configured speakers are applied at start");
+    host.player = "nonverbal"; // another resource's own call
+    assert.strictEqual(speaking.dialogue.set(owner, { world: false }), true);
+    assert.strictEqual(speaking.dialogue.set(other, { world: "nonverbal" }), true);
+    assert.strictEqual(host.world, "nonverbal", "a speaker takes its most recent hold");
+    assert.strictEqual(speaking.dialogue.release(other), true);
+    assert.strictEqual(speaking.dialogue.release(other), false);
+    assert.strictEqual(host.world, false);
+    assert.strictEqual(speaking.dialogue.set(owner, { floo: true }), true);
+    assert.deepStrictEqual([host.world, host.floo], [false, true], "a hold merges, over the config");
+    assert.strictEqual(speaking.cleanup("hmp-test"), 1);
+    assert.deepStrictEqual([host.world, host.floo], [true, false], "a stopped owner's speakers go back to the config or the host's own");
+    assert.ok(writes.every((patch) => !("player" in patch)), "a speaker nothing here names is left alone");
+    assert.deepStrictEqual(speaking.dialogue.current(), { ...host });
+    writes.length = 0;
+    speaking.stop();
+    assert.deepStrictEqual(writes, [{ floo: true }], "stopping hands the configured speakers back");
+    assert.strictEqual(host.player, "nonverbal");
 }
 
 run();

@@ -4,6 +4,7 @@
   "oneShotHandleMs": 60000,
   "enableCommands": true,
   "command": "audio",
+  "dialogue": {},
   "aliases": {
     "thunder": "Amb3D_Storm_ThunderClaps_Play",
     "explosion": "cabbage_explosion",
