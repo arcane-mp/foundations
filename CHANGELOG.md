@@ -5,6 +5,8 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-04
+
 ### Added
 
 - The shared PvP typings take `curses: "crosshair"`, which `Pvp.configure` accepts on HogwartsMP `1.11`
@@ -137,6 +139,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   the `activities` export does the same for other resources. These are not `hmp-activities` lobbies. The
   `activities` config lists the ones offered, all eight by default. It needs HogwartsMP `1.11` or newer
   for `player.startActivity` and `LocalPlayer.startActivity`; an older host ignores it.
+
+### Changed
+
+- Set the pack, all thirty resources, both gamemodes, and internal dependency pins to lockstep version
+  `0.11.0`.
+- Set the supported HogwartsMP scripting-host baseline to `1.11` or newer. Most features added in this
+  release need it; each entry says what an older host does instead.
 
 ### Fixed
 
@@ -924,6 +933,7 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 - The initial admin resource focuses on moderation and corrective operations; spectate, noclip, and
   god mode are not included.
 
+[0.11.0]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.11.0
 [0.10.0]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.10.0
 [0.9.1]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.9.1
 [0.9.0]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.9.0
