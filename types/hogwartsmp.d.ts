@@ -568,7 +568,8 @@ declare global {
         aim: "lock" | "skillshot";
         defeat: "death" | "kneel";
         friendlyFire: boolean;
-        curses: "on" | "off";
+        /** `"crosshair"` (HogwartsMP 1.11 or newer) also lets the curses hit a hostile skill-shot player under the crosshair while no lock is held. */
+        curses: "on" | "off" | "crosshair";
         kneelHp: number;
         flagCombatLockSeconds: number;
         spawnProtectionSeconds: number;

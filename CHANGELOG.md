@@ -5,6 +5,12 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Added
+
+- The shared PvP typings take `curses: "crosshair"`, which `Pvp.configure` accepts on HogwartsMP `1.11`
+  or newer: Avada Kedavra, Crucio and Imperio, which the game casts only at a locked target, also hit a
+  hostile player fought in skill-shot aim while the crosshair is on them and no lock is held.
+
 ### Fixed
 
 - `hmp-inventory` keeps each gear item's roll (`stats`: level, Offense, Defense, Cooldown, Loom
