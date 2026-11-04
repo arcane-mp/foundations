@@ -14,7 +14,8 @@ The duel rule has higher priority than `hmp-pvp`'s open-world lethal fallback, s
 floored and kneel-finished even while staff have lethal mode on for everyone else. Each hit is floored at
 `koHp` on the victim's live health. The victim's own client kneels on the finishing hit and the host
 reports it as `pvpDefeat`, which ends the duel; nothing trusts the server's possibly stale vitals report.
-The client only presents the countdown, the opponent's health meter and the result.
+The client only presents the countdown, the opponent's health meter and the result, and holds dodge
+off when the duel's rule says so.
 
 The loser's kneel lasts as long as the server's PvP rules say (`kneelSeconds`, 4 s by default) and ends
 by itself. On a server whose rules hold kneels (`kneelSeconds: 0`, down until `player.endKneel`), the duel
@@ -27,6 +28,12 @@ as if neither wore any. However the duel ends (a knock-out, a forfeit, a death, 
 `hmp-duels` stopping), each player gets back the gear rules they had before it. This needs HogwartsMP
 `1.10` or newer for `player.setGearStatMultiplier` and `player.setGearTraits`; an older host ignores the
 option and worn gear counts as usual.
+
+`dodge: false` (default `true`) keeps both duelists from dodging for the duel: from the countdown on, the
+dodge button does nothing, covering the roll, the combat dodge and the Swift dash. Each duelist's client
+takes it as `hmp-duels`'s own hold, so holds other resources take are left alone, and however the duel
+ends each player can dodge again. This needs HogwartsMP `1.11` or newer for `LocalPlayer.setDodgeEnabled`;
+on an older host duelists can still dodge, and each client logs one warning.
 
 Commands (a player id takes a `#`, as in `/duel #5`):
 

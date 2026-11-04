@@ -4,5 +4,6 @@
   "countdownSeconds": 3,
   "invitationTtlSeconds": 30,
   "koHp": 1,
-  "cosmeticGear": false
+  "cosmeticGear": false,
+  "dodge": true
 }

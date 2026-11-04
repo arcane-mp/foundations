@@ -13,7 +13,7 @@ const activities = Imports.get<HmpActivities<HmpDuelPlayer>>("hmp-activities");
 const pvp = Imports.get<HmpPvp>("hmp-pvp");
 const ui = Imports.get<HmpUiServer<HmpDuelPlayer>>("hmp-ui");
 const logger = Hmp.logger.create("hmp-duels");
-const loaded = Hmp.config.load<{ command: string; enableCommands: boolean; countdownSeconds: number; invitationTtlSeconds: number; koHp: number; cosmeticGear: boolean } & Record<string, unknown>>(process.env.HMP_DUELS_CONFIG || "data/hmp-duels.json", { defaults: { command: "duel", enableCommands: true, countdownSeconds: 3, invitationTtlSeconds: 30, koHp: 1, cosmeticGear: false } });
+const loaded = Hmp.config.load<{ command: string; enableCommands: boolean; countdownSeconds: number; invitationTtlSeconds: number; koHp: number; cosmeticGear: boolean; dodge: boolean } & Record<string, unknown>>(process.env.HMP_DUELS_CONFIG || "data/hmp-duels.json", { defaults: { command: "duel", enableCommands: true, countdownSeconds: 3, invitationTtlSeconds: 30, koHp: 1, cosmeticGear: false, dodge: true } });
 const command = String(loaded.command || "duel").trim().toLowerCase();
 const countdownSeconds = Math.max(1, Math.min(10, Math.floor(Number(loaded.countdownSeconds) || 3)));
 const invitationTtlSeconds = Math.max(10, Math.min(300, Math.floor(Number(loaded.invitationTtlSeconds) || 30)));
@@ -38,6 +38,8 @@ const duels = createDuelService({
         try { player?.setGearStatMultiplier?.(rules.multiplier); player?.setGearTraits?.(rules.traits); }
         catch (_) { /* left mid-duel */ }
     },
+    // Each duelist's client holds its own dodge, through LocalPlayer.setDodgeEnabled.
+    dodge: loaded.dodge !== false,
     emit: (player, event, payload) => player.emit(event, JSON.stringify(payload)),
     notify: (player, message, tone = "inform") => { ui.notify(player, { title: "Wizard's duel", description: message, tone }); },
     warn: (message) => logger.warn(message),

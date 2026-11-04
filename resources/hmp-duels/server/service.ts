@@ -20,6 +20,8 @@ interface Dependencies<P extends HmpDuelPlayer> {
     /** What a player's worn gear is worth (player.gearStatMultiplier, gearTraits); null on a host without gear rules. */
     gearRules?(playerId: number): GearRules | null;
     setGearRules?(playerId: number, rules: GearRules): void;
+    /** Duelists may dodge; false holds both duelists' dodge off until the duel ends. */
+    dodge?: boolean;
     emit(player: P, event: string, payload: Record<string, unknown>): void;
     notify(player: P, message: string, tone?: "inform" | "success" | "warning" | "error"): void;
     countdownSeconds: number;
@@ -59,6 +61,8 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
     const standUps = new Map<number, ReturnType<typeof setTimeout>>();
     // Each duelist's own gear rules from before the duel made their gear cosmetic.
     const gear = new Map<number, GearRules>();
+    // Duelists whose client was told to hold dodge off.
+    const dodgeHeld = new Set<number>();
     let state: "ready" | "stopped" = "ready";
     const pairKey = (a: number, b: number) => a < b ? `${a}:${b}` : `${b}:${a}`;
     const duelInvitations = (playerId: number, direction: "incoming" | "outgoing") => activities.invitations.list({ playerId, direction }).filter((invite) => invite.activityId === "duel:standard");
@@ -83,6 +87,15 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
         gear.delete(playerId); dependencies.setGearRules?.(playerId, previous);
     }
 
+    function holdDodge(playerId: number): void {
+        if (dependencies.dodge !== false || dodgeHeld.has(playerId)) return;
+        dodgeHeld.add(playerId); emitTo(playerId, "hmp-duels:dodge", { enabled: false });
+    }
+
+    function releaseDodge(playerId: number): void {
+        if (dodgeHeld.delete(playerId)) emitTo(playerId, "hmp-duels:dodge", { enabled: true });
+    }
+
     function teardown(session: HmpActivitySession, result?: Record<string, unknown>, reason = "cancelled"): void {
         const timer = countdowns.get(session.id); if (timer) unschedule(timer);
         countdowns.delete(session.id);
@@ -94,7 +107,7 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
         // Only a duel that began holds a pair and recovery; a refused or expired challenge never touched either.
         const began = ids.filter((id) => active.has(id));
         for (const id of ids) active.delete(id);
-        for (const id of began) { dependencies.setRecovery(id, true); restoreGear(id); }
+        for (const id of began) { dependencies.setRecovery(id, true); restoreGear(id); releaseDodge(id); }
         if (ids.length >= 2) {
             live.delete(pairKey(ids[0], ids[1])); ending.delete(pairKey(ids[0], ids[1]));
             if (began.length) dependencies.pair(ids[0], ids[1], null);
@@ -149,6 +162,7 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
         dependencies.setRecovery(left.playerId, false);
         dependencies.setRecovery(right.playerId, false);
         makeGearCosmetic(left.playerId); makeGearCosmetic(right.playerId);
+        holdDodge(left.playerId); holdDodge(right.playerId);
         emitTo(left.playerId, "hmp-duels:countdown", { seconds: dependencies.countdownSeconds, opponentId: right.playerId, opponentName: right.nickname });
         emitTo(right.playerId, "hmp-duels:countdown", { seconds: dependencies.countdownSeconds, opponentId: left.playerId, opponentName: left.nickname });
         // Not unref'd: each resource runs its own event loop, and libuv skips the timers of a loop with nothing referenced.
@@ -228,7 +242,7 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
 
     async function died(player: P): Promise<void> { const match = active.get(Number(player.id)); if (match) await finish(match.opponentId, Number(player.id), "died"); }
     // A departed player's gear rules leave with them, and their id may come back as someone else.
-    async function disconnected(player: P): Promise<void> { gear.delete(Number(player.id)); const match = active.get(Number(player.id)); if (match) await finish(match.opponentId, Number(player.id), "disconnect"); }
+    async function disconnected(player: P): Promise<void> { gear.delete(Number(player.id)); dodgeHeld.delete(Number(player.id)); const match = active.get(Number(player.id)); if (match) await finish(match.opponentId, Number(player.id), "disconnect"); }
     async function stop(): Promise<void> {
         if (state === "stopped") return; state = "stopped"; disposePolicy();
         for (const timer of countdowns.values()) unschedule(timer); countdowns.clear();
@@ -237,6 +251,7 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
         standUps.clear();
         // Gear counts again now, not after the sessions' teardown, which waits its turn in hmp-activities.
         for (const id of [...gear.keys()]) restoreGear(id);
+        for (const id of [...dodgeHeld]) releaseDodge(id);
         await disposeDefinition(); active.clear(); live.clear(); ending.clear();
     }
 

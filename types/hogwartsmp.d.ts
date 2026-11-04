@@ -828,6 +828,8 @@ declare global {
         /** As `setJumpEnabled`, for sprinting; a sprint already running stops. */
         setSprintEnabled(enabled: boolean): void;
         isSprintEnabled(): boolean;
+        /** As `setJumpEnabled`, for dodging: the roll, the combat dodge and the Swift dash. Absent before HogwartsMP 1.11. */
+        setDodgeEnabled?(enabled: boolean): void;
         getRotation(): { pitch: number; yaw: number; roll: number } | null;
         getControlRotation(): { pitch: number; yaw: number; roll: number } | null;
         /** Equippable gear slots from the game's GearSlotTypes table; empty until the GearManager is up. */

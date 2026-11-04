@@ -1,10 +1,28 @@
 // Who may hurt whom, and the loser's kneel, are the server's pair override and the native PvP pipeline;
-// this client only presents the countdown, the opponent's meter and the result.
+// this client presents the countdown, the opponent's meter and the result, and holds dodge when told to.
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
+// A host before LocalPlayer.setDodgeEnabled lets duelists dodge whatever the duel's rule says.
+const canHoldDodge = typeof LocalPlayer !== "undefined" && typeof LocalPlayer.setDodgeEnabled === "function";
+let dodgeHeld = false;
+let warnedDodge = false;
+
+function setDodge(enabled: boolean): void {
+    if (!canHoldDodge) {
+        if (!enabled && !warnedDodge) {
+            console.warn("[hmp-duels] the dodge rule needs HogwartsMP 1.11 or newer for LocalPlayer.setDodgeEnabled; duelists can still dodge");
+            warnedDodge = true;
+        }
+        return;
+    }
+    if (dodgeHeld === !enabled) return;
+    LocalPlayer.setDodgeEnabled!(enabled);
+    dodgeHeld = !enabled;
+}
 
 function reset(): void {
     if (countdownTimer) clearInterval(countdownTimer); countdownTimer = null;
     try { Pvp.showMeter(null); } catch (_) { /* no HUD while loading */ }
+    if (dodgeHeld) setDodge(true);
 }
 
 function parse(raw: unknown): Record<string, unknown> {
@@ -36,5 +54,7 @@ Events.on("hmp-duels:end", (raw: unknown) => {
     if (result === "lose") Game.notify(`Defeated — ${opponent} wins`);
     else Game.notify(result === "win" ? `Victory over ${opponent}!` : `Duel ended: ${String(payload.reason || result)}`);
 });
+// The server holds it from the countdown until the duel ends, however it ends.
+Events.on("hmp-duels:dodge", (raw: unknown) => { setDodge(parse(raw).enabled !== false); });
 Events.on("resourceStop", (name?: string) => { if (!name || name === "hmp-duels") reset(); });
 console.info("[hmp-duels] native duel coordinator ready");

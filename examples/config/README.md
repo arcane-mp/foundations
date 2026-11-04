@@ -46,7 +46,8 @@ common-room groups, and the game's own Great Hall banners (`"leader"` hangs the 
 `hmp-activities` includes bounded lobby settings and an opt-in dungeon-party-shaped test definition.
 `hmp-pvp` includes the server-wide default decision, lethal-mode default, staff groups, and join-sync delay;
 keep the fallback `deny` and lethal mode off unless the server intentionally runs open-world mortal PvP.
-`hmp-duels` includes challenge expiry, countdown, command, non-lethal health-floor, and cosmetic-gear settings.
+`hmp-duels` includes challenge expiry, countdown, command, non-lethal health-floor, cosmetic-gear, and dodge
+settings.
 `hmp-webhooks` includes named destinations plus gauntlet, activity, and advisory spell-cast routes. Its
 Discord URL is intentionally supplied through the server environment rather than the JSON example.
 

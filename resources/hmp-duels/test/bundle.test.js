@@ -1,13 +1,14 @@
 const assert = require("node:assert"); const path = require("node:path");
 const serverExports = new Map(), serverHandlers = new Map();
-const kneels = [], timers = [], gearCalls = [];
+const kneels = [], timers = [], gearCalls = [], dodgeEmits = [];
+const recordDodge = (id) => (event, payload) => { if (event === "hmp-duels:dodge") dodgeEmits.push([id, JSON.parse(payload).enabled]); };
 const player = {
-  id: 1, nickname: "Smoke", emit() {}, sendChat() {}, endKneel: () => { kneels.push(1); return true; },
+  id: 1, nickname: "Smoke", emit: recordDodge(1), sendChat() {}, endKneel: () => { kneels.push(1); return true; },
   gearStatMultiplier: 0.75, gearTraits: true,
   setGearStatMultiplier(value) { this.gearStatMultiplier = value; gearCalls.push(["multiplier", value]); },
   setGearTraits(value) { this.gearTraits = value; gearCalls.push(["traits", value]); },
 };
-const rival = { id: 2, nickname: "Rival", emit() {}, sendChat() {} }; // an older host's player: no gear rules
+const rival = { id: 2, nickname: "Rival", emit: recordDodge(2), sendChat() {} }; // an older host's player: no gear rules
 const session = { id: "s", participants: [{ playerId: 1, nickname: "Smoke" }, { playerId: 2, nickname: "Rival" }] };
 let definition = null, rules = {}, defaults = null;
 const activity = {
@@ -18,7 +19,7 @@ const activity = {
 const pvp = { policy: { register: () => () => true }, status: () => ({}) };
 const ui = { notify() {}, alert: async () => null, close() {} };
 global.Exports = { register: (name, value) => serverExports.set(name, value) };
-global.Imports = { get: (name) => name === "hmp-lib" ? { logger: { create: () => ({ info() {}, warn() {}, error() {} }) }, config: { load: (_p, o) => { defaults = o.defaults; return { ...o.defaults, cosmeticGear: true }; } }, player: { find: () => null } } : name === "hmp-core" ? {} : name === "hmp-activities" ? activity : name === "hmp-pvp" ? pvp : ui };
+global.Imports = { get: (name) => name === "hmp-lib" ? { logger: { create: () => ({ info() {}, warn() {}, error() {} }) }, config: { load: (_p, o) => { defaults = o.defaults; return { ...o.defaults, cosmeticGear: true, dodge: false }; } }, player: { find: () => null } } : name === "hmp-core" ? {} : name === "hmp-activities" ? activity : name === "hmp-pvp" ? pvp : ui };
 global.PlayerManager = { getById: (id) => id === 2 ? rival : player };
 global.Events = { on: (name, handler) => serverHandlers.set(name, handler) };
 global.Pvp = { getRules: () => rules };
@@ -40,27 +41,49 @@ assert.deepStrictEqual(kneels, [1]);
 delete player.endKneel; // and a player object without it is left alone
 definition.onCompleted(ko); timers.at(-1).handler();
 
-// The client may only use the host's current client Pvp surface: the opponent meter.
-const clientHandlers = new Map(), calls = [], meters = [];
+// The client uses the host's client Pvp surface, the opponent meter, and holds dodge when the server says.
+const clientHandlers = new Map(), calls = [], meters = [], warnings = [];
 global.Events = { on: (name, handler) => clientHandlers.set(name, handler), emitServer() {} };
 global.Pvp = { showMeter: (id) => { meters.push(id); return "ok"; } };
 delete global.Imports; delete global.LocalPlayer; global.Game = { notify: (value) => calls.push(value) };
-require(path.resolve(__dirname, "..", "dist", "client.js"));
+const realWarn = console.warn;
+console.warn = (...args) => warnings.push(args.join(" "));
+const clientBundle = path.resolve(__dirname, "..", "dist", "client.js");
+require(clientBundle);
 assert.ok(clientHandlers.has("hmp-duels:countdown")); assert.ok(clientHandlers.has("hmp-duels:end"));
 clientHandlers.get("hmp-duels:countdown")({ seconds: 3, opponentId: 2, opponentName: "Smoke" });
 clientHandlers.get("hmp-duels:start")({ opponentId: 2, opponentName: "Smoke" });
 clientHandlers.get("hmp-duels:end")({ result: "win", opponentName: "Smoke" });
 assert.ok(calls.some((value) => String(value).includes("Victory")));
 assert.deepStrictEqual(meters, [null, 2, 2, null]);
+// An older host has no LocalPlayer.setDodgeEnabled: duelists still dodge, and the client says so once.
+clientHandlers.get("hmp-duels:dodge")(JSON.stringify({ enabled: false }));
+clientHandlers.get("hmp-duels:dodge")(JSON.stringify({ enabled: false }));
+assert.strictEqual(warnings.length, 1);
+assert.match(warnings[0], /1\.11.*setDodgeEnabled/);
+const dodgeCalls = [];
+global.LocalPlayer = { setDodgeEnabled: (enabled) => dodgeCalls.push(enabled) };
+delete require.cache[clientBundle];
+require(clientBundle);
+clientHandlers.get("hmp-duels:dodge")(JSON.stringify({ enabled: false }));
+clientHandlers.get("hmp-duels:end")({ result: "lose", opponentName: "Smoke" });
+clientHandlers.get("hmp-duels:end")({ result: "cancelled" });
+clientHandlers.get("hmp-duels:dodge")({ enabled: false });
+clientHandlers.get("resourceStop")("hmp-duels");
+assert.deepStrictEqual(dodgeCalls, [false, true, false, true]);
+console.warn = realWarn;
 
 // cosmeticGear, off by default, makes a new host's duelist's gear cosmetic for the duel and gives their own rules back
 // when it ends; an older host's player is left alone.
 void (async () => {
   assert.strictEqual(defaults.cosmeticGear, false);
+  assert.strictEqual(defaults.dodge, true);
   global.Pvp = { setPair: () => true, getRules: () => rules };
   assert.strictEqual(await serverExports.get("accept")(rival), true);
   assert.deepStrictEqual(gearCalls, [["multiplier", 0], ["traits", false]]);
   definition.onCompleted({ session, result: { winnerId: 1, loserId: 2, reason: "forfeit" } });
   assert.deepStrictEqual(gearCalls.slice(2), [["multiplier", 0.75], ["traits", true]]);
+  // dodge: false holds both duelists' dodge from the countdown to the end.
+  assert.deepStrictEqual(dodgeEmits, [[1, false], [2, false], [1, true], [2, true]]);
   console.log("hmp-duels bundle contract passed");
 })();

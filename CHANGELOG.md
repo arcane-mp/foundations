@@ -120,6 +120,11 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   `tickets.required: true` turns away a join no redeemer accepted with `tickets.rejectMessage`; it
   defaults to `false`, so joins from the server list still work. It needs HogwartsMP `1.11` or newer for
   link tickets in `playerConnecting`; an older host ignores it.
+- `hmp-duels` `dodge: false` keeps both duelists from dodging for the duel: from the countdown on, the
+  dodge button does nothing (the roll, the combat dodge and the Swift dash). Each client holds it as
+  `hmp-duels`'s own, and however the duel ends (a knock-out, a forfeit, a death, a disconnect or
+  `hmp-duels` stopping) both can dodge again. It defaults to `true`, so duelists dodge as before. It
+  needs HogwartsMP `1.11` or newer for `LocalPlayer.setDodgeEnabled`; an older host ignores it.
 
 ### Fixed
 

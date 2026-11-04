@@ -120,5 +120,50 @@ async function run(): Promise<void> {
     assert.deepStrictEqual(stoodUp, [1, 2]);
     assert.deepStrictEqual(gearSets, [[1, { multiplier: 1, traits: true }], [3, { multiplier: 1, traits: true }]]);
     assert.strictEqual(duels.status().state, "stopped");
+    assert.ok(!emitted.some((entry) => entry.event === "hmp-duels:dodge"), "duelists may dodge by default");
 }
-run().then(() => console.log("hmp-duels tests passed"));
+async function dodgeRule(): Promise<void> {
+    const players = [makePlayer(1), makePlayer(2), makePlayer(3)];
+    const core = { characters: { active: (player: Player | number) => { const id = typeof player === "number" ? player : player.id; return { id: id * 10, accountId: id, slot: 1, name: `Character ${id}`, status: "active", createdAt: "", updatedAt: "", deletedAt: null }; } } };
+    let sequence = 0;
+    const activities = createActivityService<Player>({ core: core as never, config: { command: "activities", enableCommands: false, maxDefinitions: 10, maxSessions: 10, maxMetadataBytes: 1024, maxInvitations: 20, defaultInvitationTtlSeconds: 30, maximumInvitationTtlSeconds: 60, defaultLobbyTtlSeconds: 300, maximumLobbyTtlSeconds: 600, sweepIntervalSeconds: 30, enableTestActivity: false }, id: () => `dodge-${++sequence}` });
+    const pvp = createPvpService({ defaultDecision: "deny", initialLethalMode: false, install: () => undefined, clearPolicy: () => undefined, vitals: () => null, applyMode: () => undefined });
+    const timers: Array<() => void> = [];
+    const dodges: Array<[number, unknown]> = [];
+    const duels = createDuelService<Player>({
+        activities, pvp, player: (id) => players.find((entry) => entry.id === id) || null,
+        pair: () => true, setRecovery() {},
+        dodge: false,
+        emit: (player, event, payload) => { if (event === "hmp-duels:dodge") dodges.push([player.id, payload.enabled]); }, notify() {},
+        countdownSeconds: 3, invitationTtlSeconds: 30, koHp: 1,
+        setTimer: ((handler: () => void) => { timers.push(handler); return {} as NodeJS.Timeout; }), clearTimer() {},
+    });
+    const duel = async (a = players[0], b = players[1]) => { await duels.challenge(a, b); await duels.accept(b); timers.pop()!(); };
+
+    // dodge: false holds both duelists' dodge off from the countdown, and gives it back however the duel ends.
+    await duels.challenge(players[0], players[1]);
+    await duels.accept(players[1]);
+    assert.deepStrictEqual(dodges, [[1, false], [2, false]]);
+    timers.pop()!();
+    await duels.defeated(players[1], players[0]);
+    assert.deepStrictEqual(dodges.slice(2), [[1, true], [2, true]]);
+
+    // A declined challenge never held anyone's dodge.
+    dodges.length = 0;
+    await duels.challenge(players[0], players[1]);
+    await duels.decline(players[1]);
+    assert.deepStrictEqual(dodges, []);
+
+    // A duelist who leaves takes their client's hold with them; the one still here gets dodge back.
+    await duel();
+    await duels.disconnected(players[1]);
+    assert.deepStrictEqual(dodges, [[1, false], [2, false], [1, true]]);
+
+    // Stopping hmp-duels gives a running duel's dodge back at once.
+    dodges.length = 0;
+    await duel(players[0], players[2]);
+    await duels.stop(); await activities.stop(); pvp.stop();
+    assert.deepStrictEqual(dodges, [[1, false], [3, false], [1, true], [3, true]]);
+}
+
+run().then(dodgeRule).then(() => console.log("hmp-duels tests passed"));
