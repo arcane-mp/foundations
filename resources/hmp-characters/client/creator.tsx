@@ -92,6 +92,7 @@ const bridge = {
     confirm: (first: string, last: string, dorm: string) => emit("creator:confirm", { first, last, dorm }),
     option: (category: string, index: number) => emit("creator:option", { category, index }),
     hairColour: (colour: string) => emit("creator:hair-colour", { colour }),
+    facialHairColour: (colour: string) => emit("creator:facial-hair-colour", { colour }),
     camera: (frame: CameraFrame) => emit("creator:camera", frame),
     rotate: (yaw: number) => emit("creator:rotate", { yaw }),
     freeze: (frozen: boolean) => emit("creator:freeze", { frozen }),
@@ -152,7 +153,7 @@ function hexToHsv(hex: string): Hsv {
 }
 
 // `value` is the colour worn in place of the preset, or "" while the preset is worn.
-function HairColourPicker({ value, onPick }: { value: string; onPick: (hex: string) => void }) {
+function ColourPicker({ value, onPick }: { value: string; onPick: (hex: string) => void }) {
     const [hsv, setHsv] = useState(() => hexToHsv(value || HAIR_FALLBACK));
     const [text, setText] = useState(value || HAIR_FALLBACK);
     const pad = useRef<HTMLDivElement>(null);
@@ -205,10 +206,21 @@ function HairColourPicker({ value, onPick }: { value: string; onPick: (hex: stri
             <span style={{ ...marker, left: `${(hsv.h / 360) * 100}%`, top: "50%", background: pure }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <button className="hmp-hover" type="button" aria-label="Wear this hair colour" onClick={() => wear(hex)} style={{ flex: "none", width: 30, height: 30, borderRadius: "50%", border: `1px solid ${value ? T.gold : T.goldLine}`, background: hex, boxShadow: value ? `0 0 0 3px rgba(201,162,90,.2), 0 0 10px ${T.goldGlow}` : "none", cursor: "pointer" }} />
-            <input value={text} maxLength={7} spellCheck={false} aria-label="Hair colour as #rrggbb" onChange={(event) => setText(event.target.value.trim())} onKeyDown={(event) => { if (event.key === "Enter") commitText(); }} onBlur={() => { if (text !== hex) commitText(); }} style={{ ...fieldStyle, flex: 1, minWidth: 0, padding: "7px 12px", fontFamily: T.mono, fontSize: 12 }} />
+            <button className="hmp-hover" type="button" aria-label="Wear this colour" onClick={() => wear(hex)} style={{ flex: "none", width: 30, height: 30, borderRadius: "50%", border: `1px solid ${value ? T.gold : T.goldLine}`, background: hex, boxShadow: value ? `0 0 0 3px rgba(201,162,90,.2), 0 0 10px ${T.goldGlow}` : "none", cursor: "pointer" }} />
+            <input value={text} maxLength={7} spellCheck={false} aria-label="Colour as #rrggbb" onChange={(event) => setText(event.target.value.trim())} onKeyDown={(event) => { if (event.key === "Enter") commitText(); }} onBlur={() => { if (text !== hex) commitText(); }} style={{ ...fieldStyle, flex: 1, minWidth: 0, padding: "7px 12px", fontFamily: T.mono, fontSize: 12 }} />
             <div style={{ flex: "none", width: 58, textAlign: "right", fontFamily: T.mono, fontSize: 12, color: value ? "#c2b291" : T.mutedDim }}>{value ? "CUSTOM" : "PRESET"}</div>
         </div>
+    </div>;
+}
+
+// The free colour sits behind a toggle; while closed it still names the colour worn.
+function ColourDetails({ open, onToggle, value, onPick }: { open: boolean; onToggle: () => void; value: string; onPick: (hex: string) => void }) {
+    return <div style={{ marginTop: 14 }}>
+        <button className="hmp-hover" type="button" aria-expanded={open} onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 0, border: "none", background: "transparent", color: T.goldSoft, fontFamily: T.display, fontSize: 10, letterSpacing: ".18em", cursor: "pointer" }}>
+            <span style={{ display: "inline-block", width: 10, fontSize: 15, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>&#8250;</span>DETAILS
+            {value && !open && <span style={{ marginLeft: "auto", fontFamily: T.mono, fontSize: 12, letterSpacing: 0, color: "#c2b291" }}>{value}</span>}
+        </button>
+        {open && <div style={{ marginTop: 14 }}><ColourPicker value={value} onPick={onPick} /></div>}
     </div>;
 }
 
@@ -255,7 +267,8 @@ function App() {
     const [dorm, setDorm] = useState<"witch" | "wizard" | null>(null);
     const [capabilities, setCapabilities] = useState<CreatorCapabilities>({});
     const [customHair, setCustomHair] = useState("");
-    const [hairDetails, setHairDetails] = useState(false);
+    const [customBeard, setCustomBeard] = useState("");
+    const [details, setDetails] = useState<Record<string, boolean>>({});
     const [importOpen, setImportOpen] = useState(false);
     const [importBusy, setImportBusy] = useState(false);
     const [importError, setImportError] = useState("");
@@ -270,6 +283,9 @@ function App() {
         setSchema(snapshot.schema);
         setCapabilities(snapshot.capabilities || {});
         setCustomHair(hexColourOf(snapshot.state.selections?.hairColour));
+        const beard = hexColourOf(snapshot.state.facialHairColor);
+        const beardPresets = snapshot.schema.categories.facialHairColor?.options || [];
+        setCustomBeard(beard && !beardPresets.some((option) => option.toLowerCase() === beard) ? beard : "");
         const pronoun = pronounOf(snapshot.state.pronoun);
         if (imported && pronoun) setDorm(pronoun);
         const next: Record<string, number> = {};
@@ -279,6 +295,8 @@ function App() {
             if (cleared) {
                 const value = cleared(snapshot.state) || "";
                 const index = value ? options.indexOf(value) : -1;
+                // A free colour is none of the slider's, so the slider stays where it was.
+                if (index < 0 && hexColourOf(value)) continue;
                 next[section.key] = index >= 0 ? index + 2 : 1;
             } else {
                 const index = options.indexOf(snapshot.state.selections?.[section.key] || "");
@@ -378,10 +396,13 @@ function App() {
     const setOption = (key: string, value: number) => {
         setOpts((current) => ({ ...current, [key]: value }));
         if (key === "hairColour") setCustomHair("");
+        if (key === "facialHairColor") setCustomBeard("");
         setNotice("");
         bridge.option(key, value);
     };
     const pickHair = (colour: string) => { setCustomHair(colour); setNotice(""); bridge.hairColour(colour); };
+    const pickBeard = (colour: string) => { setCustomBeard(colour); setNotice(""); bridge.facialHairColour(colour); };
+    const toggleDetails = (key: string) => setDetails((current) => ({ ...current, [key]: !current[key] }));
     const askDorm = capabilities.pronoun === true;
     const canConfirm = Boolean(first.trim() && last.trim() && (dorm || !askDorm));
     const label = (text: string) => <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}><div style={{ fontFamily: T.display, fontSize: 11, letterSpacing: ".24em", color: T.label }}>{text}</div><div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(201,162,90,.28),transparent)" }} /></div>;
@@ -424,13 +445,8 @@ function App() {
                 </> : sections.map((section) => <div key={section.key} style={{ marginBottom: 26 }}>
                     {label(section.label.toUpperCase())}
                     <Slider value={Math.min(opts[section.key] || 1, sectionMax(section))} max={sectionMax(section)} onChange={(value) => setOption(section.key, value)} />
-                    {section.key === "hairColour" && capabilities.hairColourHex && <div style={{ marginTop: 14 }}>
-                        <button className="hmp-hover" type="button" aria-expanded={hairDetails} onClick={() => setHairDetails((open) => !open)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 0, border: "none", background: "transparent", color: T.goldSoft, fontFamily: T.display, fontSize: 10, letterSpacing: ".18em", cursor: "pointer" }}>
-                            <span style={{ display: "inline-block", width: 10, fontSize: 15, transform: hairDetails ? "rotate(90deg)" : "none", transition: "transform .15s" }}>&#8250;</span>DETAILS
-                            {customHair && !hairDetails && <span style={{ marginLeft: "auto", fontFamily: T.mono, fontSize: 12, letterSpacing: 0, color: "#c2b291" }}>{customHair}</span>}
-                        </button>
-                        {hairDetails && <div style={{ marginTop: 14 }}><HairColourPicker value={customHair} onPick={pickHair} /></div>}
-                    </div>}
+                    {section.key === "hairColour" && capabilities.hairColourHex && <ColourDetails open={details.hairColour === true} onToggle={() => toggleDetails("hairColour")} value={customHair} onPick={pickHair} />}
+                    {section.key === "facialHairColor" && <ColourDetails open={details.facialHairColor === true} onToggle={() => toggleDetails("facialHairColor")} value={customBeard} onPick={pickBeard} />}
                 </div>)}
             </aside>
 

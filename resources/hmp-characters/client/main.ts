@@ -487,6 +487,20 @@ function wireCreator(): void {
             creatorError("That hair colour could not be applied.");
         }
     });
+    Web.on(creatorView, "creator:facial-hair-colour", (payload) => {
+        if (!creatorVisible) return;
+        const colour = hexColourOf(creatorRecord(payload).colour);
+        const schema = creatorSchema || readCreatorSnapshot()?.schema;
+        if (!colour || !schema?.categories?.facialHairColor) {
+            creatorError(colour ? "This client does not support facial hair." : "Enter the facial hair colour as #rrggbb.");
+            return;
+        }
+        try {
+            if (Creator.applyPatch({ facialHairColor: colour }) < 1) creatorError("That facial hair colour was not accepted.");
+        } catch (_) {
+            creatorError("That facial hair colour could not be applied.");
+        }
+    });
     Web.on(creatorView, "creator:voice", (payload) => {
         if (!creatorVisible) return;
         const input = creatorRecord(payload);

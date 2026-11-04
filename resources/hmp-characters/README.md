@@ -25,6 +25,9 @@ any colour in place of the preset; the look saves it, and choosing a preset on t
 it. While Details is closed, the custom colour being worn shows beside it. An older host
 offers neither and does not ask for a dormitory.
 
+**Facial Hair Colour** has the same **Details** picker, on any host that offers facial hair (HogwartsMP
+`1.10` or newer): a picked colour replaces the slider's, and moving the slider again clears it.
+
 ## Responsibilities
 
 - `hmp-core` owns character IDs, slots, account ownership and lifecycle.

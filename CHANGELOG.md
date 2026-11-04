@@ -32,6 +32,11 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   The shared typings declare `pronoun` on looks and creator snapshots and both creator capabilities. It
   needs HogwartsMP `1.11` or newer for the creator's `pronoun` and `hairColourHex`; an older host
   ignores it, and the creator shows neither and no longer asks for a dormitory it could not keep.
+- `hmp-characters`' creator offers a free facial hair colour. Under Facial Hair Colour, Details opens
+  the same colour picker as the hair's, and a picked or typed `#rrggbb` replaces the slider's colour;
+  the look saves it, and moving the slider again clears it. The hair and facial hair pickers both stay
+  behind their closed Details toggle, which names the custom colour worn. It works on any host that offers
+  facial hair, HogwartsMP `1.10` included.
 - `hmp-houses` `commonRoomGroups` and the `commonRooms` export let a character enter other houses' common
   rooms besides their own, for staff or guests: the entrance opens for them as for a member of that house,
   while their house and robes stay as they are. `commonRooms.grant`, `revoke`, `list` and `clear` keep a
