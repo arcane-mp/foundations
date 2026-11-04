@@ -6,10 +6,11 @@ import type { HmpCore } from "../../hmp-core/types";
 import type { HmpLibServer } from "../../hmp-lib/types";
 import type { HmpMySQL } from "../../hmp-mysql/types";
 import type { HmpLootItem, HmpLootPlayer } from "../types";
-import type { NativeLootables, NativeWorldLoot } from "./internal";
+import type { NativeLootables, NativeLootSpots, NativeWorldLoot } from "./internal";
 
 declare const Lootables: NativeLootables<HmpLootPlayer> | undefined;
 declare const World: NativeWorldLoot | undefined;
+declare const LootSpots: NativeLootSpots | undefined;
 
 const { loadConfig } = configModule;
 const { createRepository } = repositoryModule;
@@ -34,11 +35,13 @@ const service = createLootService<HmpLootPlayer>({
     config,
     lootables: native?.lootables ?? missing,
     world: native?.world ?? missing,
+    spots: typeof LootSpots === "undefined" ? null : LootSpots,
     repository: createRepository(database),
     migrations,
     core,
     players: () => PlayerManager.getAll() as HmpLootPlayer[],
     logger,
+    emit: (eventName, payload) => { Events.emit(eventName, payload); },
 });
 
 Exports.register("lootables", service.lootables);
@@ -60,6 +63,10 @@ function safeSync(player: HmpLootPlayer | null): void {
 Events.on("lootableTaken", (player: HmpLootPlayer, lootableId: number, items: HmpLootItem[]) => {
     service.taken(player, lootableId, items).catch((error) => logger.warn(`Could not record a take of lootable ${lootableId} by #${player.id}: ${messageOf(error)}`));
 });
+Events.on("lootSpotTaken", (player: HmpLootPlayer, spotId: string, items: HmpLootItem[]) => {
+    try { service.spotTaken(player, spotId, items); }
+    catch (error) { logger.warn(`Could not raise a take of loot spot ${spotId} by #${player.id}: ${messageOf(error)}`); }
+});
 Events.on("playerConnect", (player: HmpLootPlayer) => safeSync(player));
 Events.on("hmp:session:ready", (payload: unknown) => safeSync(playerFromPayload(payload)));
 Events.on("hmp:character:loaded", (payload: unknown) => safeSync(playerFromPayload(payload)));
@@ -72,7 +79,8 @@ Events.on("resourceStart", (name?: string) => {
         .then(() => {
             const status = service.status();
             const off = Object.entries(status.suppressedGameLoot).filter(([, on]) => on).map(([family]) => family);
-            logger.info(`Loot ready: ${status.lootables} lootable(s), ${status.records} live take(s); game loot off: ${off.join(", ") || "none"}`);
+            const server = Object.entries(status.gameLoot).filter(([, policy]) => policy === "server").map(([family]) => family);
+            logger.info(`Loot ready: ${status.lootables} lootable(s), ${status.records} live take(s); game loot off: ${off.join(", ") || "none"}; server loot spots: ${server.join(", ") || "none"}`);
         })
         .catch((error) => logger.error(`Startup failed: ${messageOf(error)}`));
 });

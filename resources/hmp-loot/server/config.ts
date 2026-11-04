@@ -1,10 +1,18 @@
 import type { HmpLibServer } from "../../hmp-lib/types";
-import type { HmpLootDefinition, HmpLootFamilies, HmpLootItem, HmpLootPlayer } from "../types";
-import type { LootConfig } from "./internal";
+import type { HmpLootDefinition, HmpLootFamilies, HmpLootItem, HmpLootPlayer, HmpLootPolicy, HmpLootSpotFamily, HmpLootSpotYield } from "../types";
+import type { LootConfig, LootSpotConfig, LootSpotSettings } from "./internal";
 
 const KINDS = new Set(["chest", "moonstone", "foragable"]);
 const SCOPES = new Set(["character", "shared"]);
 const KEY_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
+const POLICIES = new Set(["native", "suppressed", "server"]);
+const SPOT_MODES = new Set(["shared", "perPlayer"]);
+const SPOT_KIND_PATTERN = /^[A-Za-z0-9_]{1,64}$/;
+// The host's LootSpots limits: a week of respawn, 1-1000 of an item per restock.
+const MAX_SPOT_RESPAWN_SECONDS = 7 * 86400;
+const MAX_SPOT_YIELD = 1000;
+
+const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 function cleanId(value: unknown, label: string): string {
     const result = String(value || "").trim();
@@ -33,6 +41,54 @@ function families(value: unknown, label: string): HmpLootFamilies {
         out[family] = raw[family] as boolean;
     }
     return out;
+}
+
+function policies(value: unknown, label: string): Record<HmpLootSpotFamily, HmpLootPolicy | null> {
+    if (value !== undefined && value !== null && !isObject(value)) throw new TypeError(`${label} must be an object`);
+    const raw = value ?? {};
+    const out: Record<HmpLootSpotFamily, HmpLootPolicy | null> = { moonstones: null, foragables: null };
+    for (const family of Object.keys(out) as HmpLootSpotFamily[]) {
+        if (raw[family] === undefined || raw[family] === null) continue;
+        if (!POLICIES.has(raw[family] as string)) throw new TypeError(`${label}.${family} must be "native", "suppressed" or "server"`);
+        out[family] = raw[family] as HmpLootPolicy;
+    }
+    return out;
+}
+
+function spotRespawn(value: unknown, label: string): number {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > MAX_SPOT_RESPAWN_SECONDS) {
+        throw new TypeError(`${label} must be from 0 to ${MAX_SPOT_RESPAWN_SECONDS} seconds`);
+    }
+    return value;
+}
+
+function spotYield(value: unknown, label: string): HmpLootSpotYield {
+    const whole = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= MAX_SPOT_YIELD;
+    if (whole(value)) return value;
+    if (Array.isArray(value) && value.length === 2 && whole(value[0]) && whole(value[1]) && value[0] <= value[1]) return [value[0], value[1]];
+    throw new TypeError(`${label} must be a whole number from 1 to ${MAX_SPOT_YIELD}, or [min, max] within it`);
+}
+
+function spotSettings(value: unknown, label: string): LootSpotConfig {
+    if (value !== undefined && value !== null && !isObject(value)) throw new TypeError(`${label} must be an object`);
+    const raw = value ?? {};
+    if (raw.mode !== undefined && raw.mode !== null && !SPOT_MODES.has(raw.mode as string)) throw new TypeError(`${label}.mode must be "shared" or "perPlayer"`);
+    if (raw.kinds !== undefined && raw.kinds !== null && !isObject(raw.kinds)) throw new TypeError(`${label}.kinds must be an object keyed by kind`);
+    const kinds: Record<string, LootSpotSettings> = {};
+    for (const [kind, entry] of Object.entries(raw.kinds ?? {})) {
+        if (!SPOT_KIND_PATTERN.test(kind)) throw new TypeError(`${label}.kinds key '${kind}' must be a kind name, "moonstones" or "foragables"`);
+        if (!isObject(entry)) throw new TypeError(`${label}.kinds.${kind} must be { respawnSeconds?, yield? }`);
+        const settings: LootSpotSettings = {};
+        if (entry.respawnSeconds !== undefined && entry.respawnSeconds !== null) settings.respawnSeconds = spotRespawn(entry.respawnSeconds, `${label}.kinds.${kind}.respawnSeconds`);
+        if (entry.yield !== undefined && entry.yield !== null) settings.yield = spotYield(entry.yield, `${label}.kinds.${kind}.yield`);
+        kinds[kind] = settings;
+    }
+    return {
+        mode: (raw.mode ?? null) as LootSpotConfig["mode"],
+        respawnSeconds: raw.respawnSeconds === undefined || raw.respawnSeconds === null ? null : spotRespawn(raw.respawnSeconds, `${label}.respawnSeconds`),
+        yield: raw.yield === undefined || raw.yield === null ? null : spotYield(raw.yield, `${label}.yield`),
+        kinds,
+    };
 }
 
 function items(value: unknown, label: string): HmpLootItem[] {
@@ -76,6 +132,8 @@ function loadConfig(Hmp: HmpLibServer<HmpLootPlayer>, options: { env?: NodeJS.Pr
         enableCommands: true,
         adminGroups: [{ key: "admin", minimumGrade: 1 }],
         suppressGameLoot: { chests: false, moonstones: false, foragables: false, pouches: false },
+        gameLoot: { moonstones: null, foragables: null },
+        lootSpots: { mode: null, respawnSeconds: null, yield: null, kinds: {} },
         lootables: [],
         sweepMs: 1000,
     };
@@ -98,7 +156,13 @@ function loadConfig(Hmp: HmpLibServer<HmpLootPlayer>, options: { env?: NodeJS.Pr
         seen.add(entry.key);
     }
     const sweepMs = loaded.sweepMs === undefined ? defaults.sweepMs : positiveInt(loaded.sweepMs, "hmp-loot sweepMs");
-    return { command, enableCommands, adminGroups, suppressGameLoot: families(loaded.suppressGameLoot, "hmp-loot suppressGameLoot"), lootables, sweepMs };
+    return {
+        command, enableCommands, adminGroups,
+        suppressGameLoot: families(loaded.suppressGameLoot, "hmp-loot suppressGameLoot"),
+        gameLoot: policies(loaded.gameLoot, "hmp-loot gameLoot"),
+        lootSpots: spotSettings(loaded.lootSpots, "hmp-loot lootSpots"),
+        lootables, sweepMs,
+    };
 }
 
 export = { loadConfig };

@@ -1,13 +1,15 @@
-import type { HmpLootDefinition, HmpLootFamilies, HmpLootItem, HmpLootPlayer, HmpLootRecord, HmpLootState, HmpLootStatus, HmpLootTake } from "../types";
+import type { HmpLootDefinition, HmpLootFamilies, HmpLootItem, HmpLootPlayer, HmpLootPolicy, HmpLootRecord, HmpLootSpotFamily, HmpLootSpotTake, HmpLootState, HmpLootStatus, HmpLootTake } from "../types";
 import type { LootDependencies, LootService } from "./internal";
 
 const NONE: HmpLootFamilies = Object.freeze({ chests: false, moonstones: false, foragables: false, pouches: false });
+const SPOT_FAMILIES: readonly HmpLootSpotFamily[] = ["moonstones", "foragables"];
 
 const recordId = (key: string, characterId: number | null): string => `${key}\u0000${characterId ?? 0}`;
 const messageOf = (error: unknown): string => error instanceof Error ? error.message : String(error);
 
 function createLootService<P extends HmpLootPlayer>(dependencies: LootDependencies<P>): LootService<P> {
     const { config, lootables, world, repository, migrations, core } = dependencies;
+    const spots = dependencies.spots ?? null;
     const now = dependencies.now || Date.now;
     const schedule = dependencies.schedule || ((fn: () => void, ms: number) => {
         const timer = setInterval(fn, ms);
@@ -24,7 +26,10 @@ function createLootService<P extends HmpLootPlayer>(dependencies: LootDependenci
     let lastError = "";
     let readyPromise: Promise<void> | null = null;
     let stopSweep: (() => void) | null = null;
-    let suppressed: HmpLootFamilies = { ...NONE };
+    // What this resource changed, so stop puts back what it found and leaves other owners' settings alone.
+    let switchedOff: Partial<HmpLootFamilies> = {};
+    let policyFound: Partial<Record<HmpLootSpotFamily, HmpLootPolicy>> = {};
+    let policySet: Record<HmpLootSpotFamily, HmpLootPolicy | null> = { moonstones: null, foragables: null };
 
     // Only for rows read at startup: a loaded take stays in effect until the sweep releases it.
     const live = (record: HmpLootRecord | undefined): boolean => !!record && (record.respawnAt === null || record.respawnAt > now());
@@ -100,6 +105,69 @@ function createLootService<P extends HmpLootPlayer>(dependencies: LootDependenci
         }
     }
 
+    function applySpotSettings(): void {
+        const settings = config.lootSpots;
+        const kinds = Object.entries(settings.kinds);
+        if (settings.mode === null && settings.respawnSeconds === null && settings.yield === null && !kinds.length) return;
+        if (!spots) {
+            logger?.warn("lootSpots needs HogwartsMP 1.11 or newer for LootSpots; this host ignores it");
+            return;
+        }
+        const refused = (what: string) => logger?.warn(`LootSpots refused ${what}`);
+        if (settings.mode !== null && spots.mode !== settings.mode && !spots.setMode(settings.mode)) refused(`mode "${settings.mode}"`);
+        if (settings.respawnSeconds !== null && !spots.setRespawnSeconds(settings.respawnSeconds)) refused(`respawnSeconds ${settings.respawnSeconds}`);
+        if (settings.yield !== null && !spots.setYield(settings.yield)) refused(`yield ${JSON.stringify(settings.yield)}`);
+        const known = new Set<string>([...SPOT_FAMILIES, ...spots.getKinds().map((entry) => entry.kind)]);
+        const isFamily = (kind: string) => (SPOT_FAMILIES as readonly string[]).includes(kind);
+        kinds.sort(([a], [b]) => Number(!isFamily(a)) - Number(!isFamily(b)));
+        for (const [kind, value] of kinds) {
+            if (!known.has(kind)) {
+                logger?.warn(`lootSpots.kinds.${kind} is not a LootSpots kind or family (${[...known].join(", ")}); it is skipped`);
+                continue;
+            }
+            if (value.respawnSeconds !== undefined && !spots.setRespawnSeconds(value.respawnSeconds, kind)) refused(`respawnSeconds ${value.respawnSeconds} for ${kind}`);
+            if (value.yield !== undefined && !spots.setYield(value.yield, kind)) refused(`yield ${JSON.stringify(value.yield)} for ${kind}`);
+        }
+    }
+
+    // gameLoot wins for its families; one it leaves out follows suppressGameLoot. Only what differs from what
+    // the host holds now is changed, and "native" never is, so another owner's policy stands.
+    function applyGameLoot(): void {
+        const policyHost = typeof world.setLootPolicy === "function" && !!world.lootPolicy;
+        const found = world.lootSuppressed;
+        const off: Partial<HmpLootFamilies> = {};
+        for (const family of ["chests", "pouches"] as const) {
+            if (config.suppressGameLoot[family] && !found?.[family]) off[family] = true;
+        }
+        const wanted: Partial<Record<HmpLootSpotFamily, HmpLootPolicy>> = {};
+        for (const family of SPOT_FAMILIES) {
+            const fallback: HmpLootPolicy = config.suppressGameLoot[family] ? "suppressed" : "native";
+            let policy = config.gameLoot[family] ?? fallback;
+            if (policy === "server" && !policyHost) {
+                logger?.warn(`gameLoot.${family} "server" needs HogwartsMP 1.11 or newer for World.setLootPolicy; this host keeps ${family} ${fallback}`);
+                policy = fallback;
+            }
+            if (policy === "native") continue;
+            if (policyHost) {
+                if (world.lootPolicy![family] !== policy) wanted[family] = policy;
+            }
+            else if (!found?.[family]) off[family] = true;
+        }
+        if (Object.keys(off).length) {
+            if (!world.suppressLoot(off)) throw new Error("World.suppressLoot refused the configured families");
+            switchedOff = off;
+            for (const family of SPOT_FAMILIES) if (off[family]) policySet[family] = "suppressed";
+        }
+        if (Object.keys(wanted).length) {
+            const before = { ...world.lootPolicy! };
+            if (!world.setLootPolicy!(wanted)) throw new Error("World.setLootPolicy refused the configured policy");
+            for (const family of Object.keys(wanted) as HmpLootSpotFamily[]) {
+                policyFound[family] = before[family];
+                policySet[family] = wanted[family]!;
+            }
+        }
+    }
+
     async function ready(): Promise<void> {
         if (!readyPromise) {
             readyPromise = (async () => {
@@ -111,10 +179,8 @@ function createLootService<P extends HmpLootPlayer>(dependencies: LootDependenci
                         if (live(record)) records.set(recordId(record.key, record.characterId), record);
                         else await repository.remove(record.key, record.characterId);
                     }
-                    if (Object.values(config.suppressGameLoot).some(Boolean)) {
-                        if (!world.suppressLoot(config.suppressGameLoot)) throw new Error("World.suppressLoot refused the configured families");
-                        suppressed = { ...config.suppressGameLoot };
-                    }
+                    applySpotSettings();
+                    applyGameLoot();
                     for (const definition of definitions.values()) place(definition);
                     state = "ready";
                     stopSweep = schedule(() => { void sweep(); }, config.sweepMs);
@@ -151,6 +217,24 @@ function createLootService<P extends HmpLootPlayer>(dependencies: LootDependenci
         await repository.put(record);
     }
 
+    // The host runs the spot and adopts the items; this only names the taker's character for listeners.
+    function spotTaken(player: P, spotId: string, items: HmpLootItem[]): void {
+        let spot: { kind: string; family: HmpLootSpotFamily } | null = null;
+        try { spot = spots?.get(spotId) ?? null; }
+        catch (_) { /* reported without its kind */ }
+        const take: HmpLootSpotTake<P> = {
+            player, characterId: characterOf(player), accountId: accountOf(player), spotId,
+            kind: spot?.kind ?? null, family: spot?.family ?? null, items: items.map((item) => ({ ...item })),
+        };
+        dependencies.emit?.("hmp:loot:spotTaken", take);
+    }
+
+    function suppressedGameLoot(): HmpLootFamilies {
+        const out = { ...NONE, ...switchedOff };
+        for (const family of SPOT_FAMILIES) if (policySet[family]) out[family] = true;
+        return out;
+    }
+
     function stateOf(definition: HmpLootDefinition): HmpLootState {
         const shared = definition.scope === "shared" ? records.get(recordId(definition.key, null)) : undefined;
         return { ...definition, items: definition.items.map((item) => ({ ...item })), lootableId: ids.get(definition.key) ?? 0, taken: !!shared, respawnAt: shared ? shared.respawnAt : null };
@@ -165,9 +249,12 @@ function createLootService<P extends HmpLootPlayer>(dependencies: LootDependenci
         }
         ids.clear();
         keysById.clear();
-        const lifted = Object.fromEntries(Object.entries(suppressed).filter(([, on]) => on).map(([family]) => [family, false]));
+        const lifted = Object.fromEntries(Object.keys(switchedOff).map((family) => [family, false]));
         if (Object.keys(lifted).length) world.suppressLoot(lifted);
-        suppressed = { ...NONE };
+        if (Object.keys(policyFound).length) world.setLootPolicy?.(policyFound);
+        switchedOff = {};
+        policyFound = {};
+        policySet = { moonstones: null, foragables: null };
         state = "stopped";
     }
 
@@ -195,9 +282,10 @@ function createLootService<P extends HmpLootPlayer>(dependencies: LootDependenci
 
     return Object.freeze({
         lootables: api,
-        status: (): HmpLootStatus => ({ state, lastError, lootables: ids.size, records: records.size, suppressedGameLoot: { ...suppressed }, uptimeMs: now() - startedAt }),
+        status: (): HmpLootStatus => ({ state, lastError, lootables: ids.size, records: records.size, suppressedGameLoot: suppressedGameLoot(), gameLoot: { ...policySet }, uptimeMs: now() - startedAt }),
         ready,
         taken,
+        spotTaken,
         sync,
         stop,
     });

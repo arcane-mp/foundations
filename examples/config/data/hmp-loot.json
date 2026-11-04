@@ -13,6 +13,16 @@
     "foragables": true,
     "pouches": true
   },
+  "gameLoot": {
+    "moonstones": "server",
+    "foragables": "server"
+  },
+  "lootSpots": {
+    "mode": "shared",
+    "respawnSeconds": 4320,
+    "yield": null,
+    "kinds": {}
+  },
   "lootables": [
     {
       "key": "courtyard-chest",

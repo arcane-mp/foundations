@@ -1,8 +1,8 @@
 import assert = require("node:assert");
 import configModule = require("../server/config");
 import serviceModule = require("../server/service");
-import type { HmpLootDefinition, HmpLootFamilies, HmpLootItem, HmpLootRecord, HmpLootTake } from "../types";
-import type { LootConfig, LootRepository } from "../server/internal";
+import type { HmpLootDefinition, HmpLootFamilies, HmpLootItem, HmpLootPolicy, HmpLootRecord, HmpLootSpotFamily, HmpLootSpotTake, HmpLootTake } from "../types";
+import type { LootConfig, LootRepository, NativeLootSpots } from "../server/internal";
 
 const { loadConfig } = configModule;
 const { createLootService } = serviceModule;
@@ -52,8 +52,41 @@ function fakeNative() {
     return { lootables, world, placed, views, calls, suppressedCalls };
 }
 
-function makeConfig(lootables: HmpLootDefinition[], suppressGameLoot: HmpLootFamilies = { chests: true, moonstones: true, foragables: false, pouches: false }): LootConfig {
-    return { command: "loot", enableCommands: true, adminGroups: [], suppressGameLoot, lootables, sweepMs: 1000 };
+function makeConfig(lootables: HmpLootDefinition[], suppressGameLoot: HmpLootFamilies = { chests: true, moonstones: true, foragables: false, pouches: false }, extra: Partial<LootConfig> = {}): LootConfig {
+    return {
+        command: "loot", enableCommands: true, adminGroups: [], suppressGameLoot, lootables, sweepMs: 1000,
+        gameLoot: { moonstones: null, foragables: null }, lootSpots: { mode: null, respawnSeconds: null, yield: null, kinds: {} },
+        ...extra,
+    };
+}
+
+// A 1.11 host: World.lootPolicy/setLootPolicy and LootSpots, with the policy another owner may have set.
+function fakePolicyHost(found: Record<HmpLootSpotFamily, HmpLootPolicy>, suppressed: Partial<HmpLootFamilies> = {}) {
+    const native = fakeNative();
+    const policy = { ...found };
+    const policyCalls: Array<Partial<Record<HmpLootSpotFamily, HmpLootPolicy>>> = [];
+    const spotCalls: string[] = [];
+    const world = {
+        lootSuppressed: { ...native.world.lootSuppressed, ...suppressed },
+        suppressLoot: native.world.suppressLoot,
+        get lootPolicy() { return { ...policy }; },
+        setLootPolicy(change: Partial<Record<HmpLootSpotFamily, HmpLootPolicy>>) { policyCalls.push(change); Object.assign(policy, change); return true; },
+    };
+    const kinds = [{ kind: "Moonstone_S", family: "moonstones" as const }, { kind: "Moonstone_L", family: "moonstones" as const }, { kind: "Horklump", family: "foragables" as const }];
+    const spots: NativeLootSpots = {
+        mode: "shared",
+        get: (id) => (id === "12_34:Horklump_7" ? { kind: "Horklump", family: "foragables" } : null),
+        getKinds: () => kinds,
+        setMode(mode) { spotCalls.push(`mode ${mode}`); return true; },
+        setRespawnSeconds(seconds, kind) { spotCalls.push(`respawn ${seconds} ${kind ?? "*"}`); return true; },
+        setYield(count, kind) { spotCalls.push(`yield ${JSON.stringify(count)} ${kind ?? "*"}`); return true; },
+    };
+    return { ...native, world, spots, policy, policyCalls, spotCalls };
+}
+
+function captureLogger() {
+    const warnings: string[] = [];
+    return { warnings, logger: { warn: (message: string) => { warnings.push(message); return true; }, info: () => true } };
 }
 
 async function run(): Promise<void> {
@@ -79,6 +112,27 @@ async function run(): Promise<void> {
     bad([{ key: "a", items: [{ itemId: "X", count: 0 }], position: { x: 0, y: 0, z: 0 } }], /count must be a positive integer/);
     bad([{ key: "a", position: { x: 0, y: 0, z: 0 } }, { key: "a", position: { x: 0, y: 0, z: 0 } }], /used twice/);
     assert.throws(() => loadConfig(Hmp({ suppressGameLoot: { chests: "yes" } }) as never, { env: {} as NodeJS.ProcessEnv }), /suppressGameLoot.chests must be a boolean/);
+
+    // The game's own spots: no policy and no LootSpots settings unless configured.
+    assert.deepStrictEqual(config.gameLoot, { moonstones: null, foragables: null });
+    assert.deepStrictEqual(config.lootSpots, { mode: null, respawnSeconds: null, yield: null, kinds: {} });
+    const spotted = loadConfig(Hmp({
+        gameLoot: { moonstones: "server" },
+        lootSpots: { mode: "perPlayer", respawnSeconds: 1800, yield: [1, 3], kinds: { Moonstone_L: { yield: 5 }, foragables: { respawnSeconds: 0.5 } } },
+    }) as never, { env: {} as NodeJS.ProcessEnv });
+    assert.deepStrictEqual(spotted.gameLoot, { moonstones: "server", foragables: null });
+    assert.deepStrictEqual(spotted.lootSpots, { mode: "perPlayer", respawnSeconds: 1800, yield: [1, 3], kinds: { Moonstone_L: { yield: 5 }, foragables: { respawnSeconds: 0.5 } } });
+    const badLoot = (loaded: Record<string, unknown>, pattern: RegExp) => assert.throws(() => loadConfig(Hmp(loaded) as never, { env: {} as NodeJS.ProcessEnv }), pattern);
+    badLoot({ gameLoot: "server" }, /gameLoot must be an object/);
+    badLoot({ gameLoot: { foragables: "off" } }, /gameLoot.foragables must be "native", "suppressed" or "server"/);
+    badLoot({ lootSpots: { mode: "everyone" } }, /lootSpots.mode must be/);
+    badLoot({ lootSpots: { respawnSeconds: 7 * 86400 + 1 } }, /lootSpots.respawnSeconds must be from 0 to 604800/);
+    badLoot({ lootSpots: { yield: 0 } }, /lootSpots.yield must be a whole number from 1 to 1000/);
+    badLoot({ lootSpots: { yield: [3, 2] } }, /lootSpots.yield must be/);
+    badLoot({ lootSpots: { yield: 1.5 } }, /lootSpots.yield must be/);
+    badLoot({ lootSpots: { kinds: [] } }, /lootSpots.kinds must be an object/);
+    badLoot({ lootSpots: { kinds: { "Moonstone L": {} } } }, /kinds key 'Moonstone L'/);
+    badLoot({ lootSpots: { kinds: { Horklump: { yield: 1001 } } } }, /lootSpots.kinds.Horklump.yield must be/);
 
     // Startup: expired takes are deleted, a live shared take places the lootable empty, the game's loot
     // goes off, and players without a character are locked out of character-scoped loot.
@@ -113,7 +167,8 @@ async function run(): Promise<void> {
     assert.strictEqual(service.status().state, "starting");
     await service.ready();
     assert.strictEqual(service.status().state, "ready");
-    assert.deepStrictEqual(native.suppressedCalls, [{ chests: true, moonstones: true, foragables: false, pouches: false }]);
+    assert.deepStrictEqual(native.suppressedCalls, [{ chests: true, moonstones: true }], "only the families it switches off are passed");
+    assert.deepStrictEqual(service.status().gameLoot, { moonstones: "suppressed", foragables: null });
     assert.ok(calls.includes("remove eggs/7"), "an expired take is deleted at startup");
     assert.ok(rows.has("gone/7"), "a take of a lootable no longer configured is kept");
     const ids = Object.fromEntries(service.lootables.list().map((entry) => [entry.key, entry.lootableId]));
@@ -188,6 +243,100 @@ async function run(): Promise<void> {
     await assert.rejects(degraded.ready(), /refused/);
     assert.strictEqual(degraded.status().state, "degraded");
     assert.strictEqual(refused.placed.size, 0);
+
+    // A 1.11 host: gameLoot wins over suppressGameLoot, a family left out follows it, and a family already
+    // under the wanted policy is left alone. LootSpots settings go global, then family, then kind.
+    const host = fakePolicyHost({ moonstones: "native", foragables: "suppressed" });
+    const hostLog = captureLogger();
+    const emitted: Array<[string, HmpLootSpotTake<FakePlayer>]> = [];
+    const spotService = createLootService<FakePlayer>({
+        config: makeConfig([], { chests: true, moonstones: true, foragables: true, pouches: false }, {
+            gameLoot: { moonstones: "server", foragables: null },
+            lootSpots: { mode: "perPlayer", respawnSeconds: 600, yield: [1, 2], kinds: { Moonstone_L: { yield: 5 }, Bogus: { yield: 1 }, moonstones: { respawnSeconds: 300 } } },
+        }),
+        lootables: host.lootables, world: host.world, spots: host.spots, repository: fakeRepository().repository, migrations: [], core: core as never,
+        players: () => [], logger: hostLog.logger, emit: (eventName, payload) => { emitted.push([eventName, payload as HmpLootSpotTake<FakePlayer>]); },
+    });
+    await spotService.ready();
+    assert.deepStrictEqual(host.suppressedCalls, [{ chests: true }], "moonstones and foragables go through setLootPolicy");
+    assert.deepStrictEqual(host.policyCalls, [{ moonstones: "server" }], "foragables is already suppressed, so it is not changed");
+    assert.deepStrictEqual(host.spotCalls, ["mode perPlayer", "respawn 600 *", "yield [1,2] *", "respawn 300 moonstones", "yield 5 Moonstone_L"]);
+    assert.ok(hostLog.warnings.some((message) => message.includes("lootSpots.kinds.Bogus")), "an unknown kind is named and skipped");
+    assert.deepStrictEqual(spotService.status().gameLoot, { moonstones: "server", foragables: null });
+    assert.deepStrictEqual(spotService.status().suppressedGameLoot, { chests: true, moonstones: true, foragables: false, pouches: false });
+
+    // A spot take is raised with the taker's character; the host has already adopted the items.
+    spotService.spotTaken(alice, "12_34:Horklump_7", [{ itemId: "Horklump", count: 1 }]);
+    spotService.spotTaken(guest, "gone:spot", [{ itemId: "Moonstone", count: 2 }]);
+    assert.deepStrictEqual(emitted.map(([name, take]) => [name, take.player.id, take.characterId, take.accountId, take.spotId, take.kind, take.family, take.items]), [
+        ["hmp:loot:spotTaken", 1, 7, 101, "12_34:Horklump_7", "Horklump", "foragables", [{ itemId: "Horklump", count: 1 }]],
+        ["hmp:loot:spotTaken", 3, null, 103, "gone:spot", null, null, [{ itemId: "Moonstone", count: 2 }]],
+    ]);
+
+    // Stop puts back exactly what it found for the families it changed.
+    spotService.stop();
+    assert.deepStrictEqual(host.suppressedCalls.at(-1), { chests: false });
+    assert.deepStrictEqual(host.policyCalls.at(-1), { moonstones: "native" });
+    assert.deepStrictEqual(host.policy, { moonstones: "native", foragables: "suppressed" });
+    assert.deepStrictEqual(spotService.status().gameLoot, { moonstones: null, foragables: null });
+
+    // Another owner's server spots: hmp-loot left at "native" never touches them, and one that suppresses
+    // the family over them hands it back to "server" when it stops.
+    const shared = fakePolicyHost({ moonstones: "server", foragables: "server" }, { moonstones: true, foragables: true });
+    const bystander = createLootService<FakePlayer>({
+        config: makeConfig([], { chests: false, moonstones: false, foragables: false, pouches: false }, { gameLoot: { moonstones: null, foragables: "suppressed" } }),
+        lootables: shared.lootables, world: shared.world, spots: shared.spots, repository: fakeRepository().repository, migrations: [], core: core as never, players: () => [],
+    });
+    await bystander.ready();
+    assert.deepStrictEqual(shared.policyCalls, [{ foragables: "suppressed" }]);
+    assert.deepStrictEqual(shared.spotCalls, [], "no LootSpots settings are configured");
+    bystander.stop();
+    assert.deepStrictEqual(shared.suppressedCalls, [], "suppressLoot(false) would end the other owner's spots");
+    assert.deepStrictEqual(shared.policy, { moonstones: "server", foragables: "server" });
+
+    // A mode the host already runs is not set again, since a change restocks every spot.
+    const sameMode = fakePolicyHost({ moonstones: "native", foragables: "native" });
+    const sameModeService = createLootService<FakePlayer>({
+        config: makeConfig([], undefined, { lootSpots: { mode: "shared", respawnSeconds: null, yield: null, kinds: {} } }),
+        lootables: sameMode.lootables, world: sameMode.world, spots: sameMode.spots, repository: fakeRepository().repository, migrations: [], core: core as never, players: () => [],
+    });
+    await sameModeService.ready();
+    assert.deepStrictEqual(sameMode.spotCalls, []);
+    sameModeService.stop();
+
+    // A refused policy degrades startup like a refused suppression.
+    const refusing = fakePolicyHost({ moonstones: "native", foragables: "native" });
+    refusing.world.setLootPolicy = () => false;
+    const refusedPolicy = createLootService<FakePlayer>({
+        config: makeConfig([], { chests: false, moonstones: false, foragables: false, pouches: false }, { gameLoot: { moonstones: "server", foragables: null } }),
+        lootables: refusing.lootables, world: refusing.world, spots: refusing.spots, repository: fakeRepository().repository, migrations: [], core: core as never, players: () => [],
+    });
+    await assert.rejects(refusedPolicy.ready(), /setLootPolicy refused/);
+    assert.strictEqual(refusedPolicy.status().state, "degraded");
+
+    // A 1.10 host has neither: "server" warns and the family follows suppressGameLoot, LootSpots settings
+    // warn and do nothing, and a spot take (which that host never raises) carries no kind.
+    const old = fakeNative();
+    const oldLog = captureLogger();
+    const oldEmitted: unknown[] = [];
+    const oldService = createLootService<FakePlayer>({
+        config: makeConfig([], { chests: false, moonstones: true, foragables: false, pouches: false }, {
+            gameLoot: { moonstones: "server", foragables: "server" },
+            lootSpots: { mode: null, respawnSeconds: 600, yield: null, kinds: {} },
+        }),
+        lootables: old.lootables, world: old.world, repository: fakeRepository().repository, migrations: [], core: core as never, players: () => [],
+        logger: oldLog.logger, emit: (_name, payload) => { oldEmitted.push(payload); },
+    });
+    await oldService.ready();
+    assert.deepStrictEqual(old.suppressedCalls, [{ moonstones: true }], "moonstones falls back to suppressGameLoot; foragables stays native");
+    assert.deepStrictEqual(oldService.status().gameLoot, { moonstones: "suppressed", foragables: null });
+    assert.strictEqual(oldLog.warnings.length, 3, oldLog.warnings.join("\n"));
+    assert.ok(oldLog.warnings.some((message) => message.includes("lootSpots needs HogwartsMP 1.11")));
+    assert.ok(oldLog.warnings.some((message) => message.includes("gameLoot.foragables \"server\" needs HogwartsMP 1.11")));
+    oldService.spotTaken(alice, "12_34:Horklump_7", []);
+    assert.deepStrictEqual((oldEmitted[0] as HmpLootSpotTake).kind, null);
+    oldService.stop();
+    assert.deepStrictEqual(old.suppressedCalls.at(-1), { moonstones: false });
     console.log("hmp-loot unit tests passed");
 }
 

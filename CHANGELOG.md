@@ -77,6 +77,16 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   speakers through the new `dialogue` export (`set`, `release`, `current`), dropped when they stop. It
   defaults to `{}`, so every line plays. It needs HogwartsMP `1.11` or newer for
   `Audio.setDialoguePolicy`; an older host ignores it.
+- `hmp-loot` `gameLoot` picks who spawns the game's own Overland moonstone deposits and foragables.
+  `"server"` makes each of the game's spots one copy for everyone instead of every player's own: the
+  first taker empties it until it restocks, and the take goes into their inventory, where `hmp-inventory`
+  saves it like any other game item. `lootSpots` sets the spots' mode, respawn time and yield, for every
+  kind or per family or kind, and each take raises `hmp:loot:spotTaken`. A family `gameLoot` names wins
+  over `suppressGameLoot`, one it leaves out follows it, and `"native"`, the default, leaves the family
+  alone, as before. Stopping `hmp-loot` puts back what it found for each family it changed, so it no
+  longer switches back on game loot another resource had switched off. It needs HogwartsMP `1.11` or
+  newer for `World.setLootPolicy` and `LootSpots`; an older host ignores them, and a `"server"` family
+  follows `suppressGameLoot`.
 
 ### Fixed
 

@@ -22,8 +22,10 @@ crowd density and exclusion, native-encounter, player-collision, fast-travel, tr
 jump/sprint policy applied to every client.
 `hmp-express` includes the game's own Hogwarts Express timetable with a two-minute stop at Hogsmeade station.
 `hmp-worldstate` includes the `/worldstate` admin groups and the repairable-object report limit.
-`hmp-loot` includes two example lootables in a Hogwarts courtyard and switches the game's own chests,
-moonstones and foragables off.
+`hmp-loot` includes two example lootables in a Hogwarts courtyard, switches the game's own chests and coin
+pouches off, and runs its moonstones and foragables as shared server loot spots that restock after the
+game's own three in-game days. The spots need HogwartsMP `1.11` or newer for `World.setLootPolicy`; an
+older host switches them off instead, with a warning.
 `hmp-beasts` includes the `/beasts` menu command and the release policy: released beasts come back into the
 world, not catchable again.
 `hmp-npcs` includes total and per-resource limits for NPCs managed through the Foundation service.

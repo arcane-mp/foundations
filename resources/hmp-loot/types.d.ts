@@ -65,13 +65,38 @@ export interface HmpLootFamilies {
     pouches: boolean;
 }
 
+/** Who spawns a family of the game's own Overland loot: each client's game, nobody, or the server (LootSpots). */
+export type HmpLootPolicy = "native" | "suppressed" | "server";
+
+/** The families World.setLootPolicy covers. */
+export type HmpLootSpotFamily = "moonstones" | "foragables";
+
+/** How many of its item a spot holds when it restocks: a whole number, or [min, max] rolled each time. */
+export type HmpLootSpotYield = number | [number, number];
+
+/** A take from one of the game's own spots, raised as `hmp:loot:spotTaken`. */
+export interface HmpLootSpotTake<P = HmpLootPlayer> {
+    player: P;
+    /** The taker's character, or null without one. */
+    characterId: number | null;
+    accountId: number | null;
+    spotId: string;
+    /** The spot's kind ("Moonstone_L", "Horklump", ...) and family; null for an id LootSpots does not know. */
+    kind: string | null;
+    family: HmpLootSpotFamily | null;
+    /** What the take gave the player; it is adopted into their inventory like a lootable's. */
+    items: HmpLootItem[];
+}
+
 export interface HmpLootStatus {
     state: "starting" | "ready" | "degraded" | "stopped";
     lastError: string;
     lootables: number;
     records: number;
-    /** Families of the game's own loot this resource switched off. */
+    /** Families of the game's own loot this resource switched off, under "server" too. */
     suppressedGameLoot: HmpLootFamilies;
+    /** The policy this resource put each family under; null for one it left as it found it. */
+    gameLoot: Record<HmpLootSpotFamily, HmpLootPolicy | null>;
     uptimeMs: number;
 }
 

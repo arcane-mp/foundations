@@ -10,6 +10,10 @@ client, stocking it, checking each take against what that player sees and adopti
 player's inventory. `hmp-loot` owns the policy: which `hmp-core` character took what, when it respawns, and
 what each character is offered when it loads.
 
+It can also hand the game's own Overland moonstone deposits and foragables to the server (`gameLoot`):
+each spot the game spawns becomes one copy for everyone instead of every player's own, emptied by a take
+until it restocks. HogwartsMP runs the spots; `hmp-loot` picks the policy and tunes their respawn and yield.
+
 The server build must carry the `Lootables` builtin and `World.suppressLoot`. Older builds log an error at
 startup and place nothing.
 
@@ -23,6 +27,12 @@ Copy `examples/config/data/hmp-loot.json` to `<server-root>/data/hmp-loot.json`:
   "enableCommands": true,
   "adminGroups": [{ "key": "admin", "minimumGrade": 1 }],
   "suppressGameLoot": { "chests": true, "moonstones": true, "foragables": true, "pouches": true },
+  "gameLoot": { "moonstones": "server", "foragables": "server" },
+  "lootSpots": {
+    "mode": "shared",
+    "respawnSeconds": 4320,
+    "kinds": { "foragables": { "respawnSeconds": 1800 }, "Moonstone_L": { "yield": [3, 5] } }
+  },
   "lootables": [
     {
       "key": "courtyard-chest",
@@ -49,6 +59,26 @@ Copy `examples/config/data/hmp-loot.json` to `<server-root>/data/hmp-loot.json`:
   (`World.suppressLoot`) while the resource runs, and back on when it stops. Families left out, or `false`,
   keep the game's loot. `pouches` needs HogwartsMP `1.9` or newer.
   The Overland spawns go from areas that load after startup, so a client that joins sees none.
+- `gameLoot` picks who spawns the game's own Overland moonstone deposits and foragables while the resource
+  runs: `"native"` (each player's game, with their own copy of every spawn), `"suppressed"` (nobody) or
+  `"server"` (one copy of each of the game's spots for everyone, streamed to players within 150 m). A family
+  `gameLoot` names wins over `suppressGameLoot`; one it leaves out follows `suppressGameLoot` (`true` is
+  `"suppressed"`). `"native"`, the default, leaves the family as the resource found it. On stop, each family
+  it changed goes back to the policy it found, so another resource's server spots are left running. It needs
+  HogwartsMP `1.11` or newer for `World.setLootPolicy`; on an older host `"server"` logs a warning and the
+  family follows `suppressGameLoot`.
+- A take from a server spot goes into the taker's game inventory as a lootable's does, so `hmp-inventory`
+  saves it with the character's other game items. Spot takes are not recorded: the host keeps which spots
+  are empty for the server's run, and a server restart restocks them all.
+- `lootSpots` tunes the server spots. `mode`: `"shared"` (the host's default) empties a spot for everyone,
+  `"perPlayer"` for the taker only. `respawnSeconds`: 0 to 604800; the host's default, 4320, is three in-game
+  days at the default time scale. `yield`: how many of its item a spot holds when it restocks, a whole number
+  or `[min, max]` from 1 to 1000; the game's own count by default. `kinds` sets the last two per family
+  (`moonstones`, `foragables`) or per kind (`Moonstone_S`, `Moonstone_M`, `Moonstone_L`, `AshwinderEgg_Nest`,
+  `Horklump`, `LacewingFly`, `LeapingToadstool`, `LeechForagable`); a kind wins over its family, and both
+  over the values for every kind. A kind the host does not list is logged and skipped, and anything left
+  out keeps the host's setting. Settings last for the server's run. It needs HogwartsMP `1.11` or newer for
+  `LootSpots`; an older host logs a warning and ignores it.
 - `key` names a lootable for good: takes are recorded against it, so renaming one forgets who looted it.
 - `kind` is `chest`, `moonstone` or `foragable`; `model` (a Blueprint class path) is optional and
   defaults to a Hogwarts chest, the small moonstone deposit, or the foragable the game uses for the item.
@@ -85,8 +115,20 @@ loot.lootables.reset("courtyard-eggs", 42);  // or reset(key) for every take
 loot.lootables.onTaken((take) => {
     // { key, characterId, accountId, takenAt, respawnAt, player, items }
 });
-loot.status();
+loot.status();                               // also suppressedGameLoot and the gameLoot policy it set
 ```
+
+## Events
+
+```ts
+Events.on("hmp:loot:spotTaken", ({ player, characterId, accountId, spotId, kind, family, items }) => {
+    // A take from one of the game's own spots under "server"; the items are already the player's.
+    // kind: "Moonstone_L", "Horklump", ...; family: "moonstones" or "foragables".
+});
+```
+
+`HmpLootSpotTake` in `types.d.ts` describes the payload. It is raised for every server spot take while
+`hmp-loot` runs, whichever resource set the policy; `characterId` is null for a player without a character.
 
 ## Database
 

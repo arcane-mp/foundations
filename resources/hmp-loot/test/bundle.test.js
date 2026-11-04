@@ -9,6 +9,7 @@ const player = { id: 1, nickname: "Smoke", sendChat() {} };
 const placed = [];
 const views = [];
 const suppressed = [];
+const emitted = [];
 const database = {
     ready: async () => true, migrate: async () => ({}), update: async () => 1,
     query: async () => [{ lootable_key: "courtyard-chest", character_id: 0, account_id: null, taken_at: Date.now(), respawn_at: Date.now() + 60000 }],
@@ -33,7 +34,7 @@ global.Imports = { get: (name) => {
     throw new Error(`Unexpected import ${name}`);
 } };
 global.PlayerManager = { getAll: () => [player] };
-global.Events = { on: (name, handler) => serverHandlers.set(name, handler) };
+global.Events = { on: (name, handler) => serverHandlers.set(name, handler), emit: (name, payload) => emitted.push([name, payload]) };
 global.Lootables = {
     place: (kind, x, y, z, yaw, options) => { placed.push({ kind, options }); return placed.length; },
     setItems: () => true,
@@ -44,7 +45,7 @@ global.World = { lootSuppressed: { chests: false, moonstones: false, foragables:
 
 require(path.resolve(__dirname, "..", "dist", "server.js"));
 assert.deepStrictEqual([...serverExports.keys()], ["lootables", "status"]);
-for (const name of ["lootableTaken", "playerConnect", "hmp:session:ready", "hmp:character:loaded", "hmp:character:unloaded", "resourceStart", "resourceStop", "chatCommand"]) {
+for (const name of ["lootableTaken", "lootSpotTaken", "playerConnect", "hmp:session:ready", "hmp:character:loaded", "hmp:character:unloaded", "resourceStart", "resourceStop", "chatCommand"]) {
     assert.ok(serverHandlers.has(name), `no handler for ${name}`);
 }
 assert.ok(commands.has("loot"));
@@ -67,6 +68,8 @@ assert.ok(commands.has("loot"));
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.ok(serverExports.get("lootables").record("courtyard-eggs", 7));
     await serverHandlers.get("chatCommand")(player, "/loot list", "loot", ["list"]);
+    serverHandlers.get("lootSpotTaken")(player, "12_34:Horklump_7", [{ itemId: "Horklump", count: 1 }]);
+    assert.deepStrictEqual(emitted.map(([name, take]) => [name, take.characterId, take.spotId, take.kind]), [["hmp:loot:spotTaken", 7, "12_34:Horklump_7", null]], "a host without LootSpots names no kind");
     serverHandlers.get("resourceStop")("hmp-loot");
     assert.deepStrictEqual(suppressed.at(-1), { chests: false, moonstones: false, foragables: false, pouches: false });
     console.log("hmp-loot bundle contract passed");
