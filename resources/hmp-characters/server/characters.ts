@@ -32,6 +32,9 @@ function appearanceError(value: HogwartsMpAppearanceOperationError | unknown): E
     return Object.assign(new Error(message), value && typeof value === "object" ? value : {});
 }
 
+// ArcaneMP 1.12 publishes looks as arcanemp-look; earlier hosts, and looks saved by them, say hogwartsmp-look.
+const LOOK_FORMATS: readonly string[] = ["arcanemp-look", "hogwartsmp-look"];
+
 function parseLook(value: unknown): HogwartsMpLook | null {
     let look = value;
     if (typeof look === "string") {
@@ -40,7 +43,7 @@ function parseLook(value: unknown): HogwartsMpLook | null {
     }
     if (!look || typeof look !== "object" || Array.isArray(look)) return null;
     const candidate = look as Partial<HogwartsMpLook>;
-    if (candidate.format !== "hogwartsmp-look" || !Number.isSafeInteger(candidate.version) || Number(candidate.version) < 1) return null;
+    if (!LOOK_FORMATS.includes(candidate.format as string) || !Number.isSafeInteger(candidate.version) || Number(candidate.version) < 1) return null;
     if (candidate.gender !== "male" && candidate.gender !== "female") return null;
     if (!candidate.presets || typeof candidate.presets !== "object" || Array.isArray(candidate.presets)) return null;
     if (!Array.isArray(candidate.gear)) return null;

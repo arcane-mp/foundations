@@ -264,6 +264,19 @@ test("saves an older host's look without a pronoun", async () => {
     assert.strictEqual("pronoun" in saved, false);
 });
 
+// What an ArcaneMP 1.12 host publishes: the same look under the renamed format id.
+test("saves and re-applies an ArcaneMP host's look", async () => {
+    const { flow, player, session, metadata } = setup();
+    await flow.beginCreate(player);
+    await flow.confirmCreate(player, { first: "Natsai", last: "Onai", pronoun: "witch" });
+    const published: HogwartsMpLook = { ...makeCurrentLook("after", "witch", "#4a3020"), format: "arcanemp-look" };
+    const character = await flow.onAppearanceChanged(player, published, 3);
+    assert.ok(character);
+    assert.deepStrictEqual(metadata.get(`character:${character.id}:look`), published);
+    assert.strictEqual(await flow.applyAppearance({ session, character }), true);
+    assert.deepStrictEqual(player.appliedLook, published);
+});
+
 test("loads each character's own pronoun and hair colour across switches", async () => {
     const { flow, core, player, session, metadata } = setup();
     const witch = await core.characters.create(player, { name: "Poppy Sweeting" });
