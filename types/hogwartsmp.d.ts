@@ -116,7 +116,8 @@ declare global {
      * matching import APIs accept. It never carries a transmog.
      */
     interface HogwartsMpLook {
-        readonly format: "hogwartsmp-look";
+        /** `"arcanemp-look"` from ArcaneMP 1.12; earlier hosts, and looks they saved, say `"hogwartsmp-look"`. */
+        readonly format: "arcanemp-look" | "hogwartsmp-look";
         readonly version: number;
         readonly gender: "male" | "female";
         /** Creator category -> preset id. From format 6, `hairColour` may be a `"#rrggbb"` colour in place of a preset. */
