@@ -5,6 +5,20 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-08
+
+### Changed
+
+- Set the pack, all thirty resources, both gamemodes, and internal dependency pins to lockstep version
+  `0.11.1`.
+
+### Fixed
+
+- `hmp-characters` reads the looks ArcaneMP `1.12` publishes, whose `format` is `"arcanemp-look"`. It
+  took only `"hogwartsmp-look"`, so on a `1.12` host every look was dropped and characters lost their
+  appearance. Looks saved under `"hogwartsmp-look"` still load, and the shared `HogwartsMpLook` type
+  allows both.
+
 ## [0.11.0] - 2026-11-04
 
 ### Added
@@ -933,6 +947,7 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 - The initial admin resource focuses on moderation and corrective operations; spectate, noclip, and
   god mode are not included.
 
+[0.11.1]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.11.1
 [0.11.0]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.11.0
 [0.10.0]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.10.0
 [0.9.1]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.9.1
