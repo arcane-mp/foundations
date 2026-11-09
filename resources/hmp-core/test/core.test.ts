@@ -106,7 +106,7 @@ function memoryRepository() {
     return repository;
 }
 
-function setup(overrides: Partial<CoreConfig> = {}) {
+function setup(overrides: Partial<CoreConfig> = {}, onEmit?: (name: string) => Promise<void> | undefined) {
     const emitted: RecordedEvent[] = [];
     const warnings: string[] = [];
     const migrated: Array<{ resource: string; list: HmpMySQLMigration[] }> = [];
@@ -119,7 +119,7 @@ function setup(overrides: Partial<CoreConfig> = {}) {
         repository,
         database,
         migrations,
-        events: { emit: (name: string, payload: unknown) => emitted.push({ name, payload }) },
+        events: { emit: (name: string, payload: unknown) => { emitted.push({ name, payload }); return onEmit?.(name); } },
         listPlayers: () => [],
         logger: { error: () => true, warn: (message: unknown) => warnings.push(String(message)) > 0 },
         config: {
@@ -283,6 +283,28 @@ test("raises every disconnect teardown event before yielding", async () => {
     assert.deepStrictEqual(emitted.map((event) => event.name), ["hmp:character:unloading", "hmp:character:unloaded", "hmp:session:ended"]);
     assert.strictEqual(core.sessions.isReady(leaving), false);
     assert.strictEqual(await closing, true);
+
+    const back = player(2, "Back", { steamId: "100" });
+    await core.connect(back);
+    assert.strictEqual((await core.characters.select(back, character.id)).id, character.id, "the character's claim was not released");
+});
+
+test("releases a character whose player disconnects while it is loading", async () => {
+    let finishLoading = () => {};
+    const loading = new Promise<void>((resolve) => { finishLoading = resolve; });
+    const { core, emitted } = setup({}, (name) => name === "hmp:character:loading" ? loading : undefined);
+    await core.start();
+    const leaving = player(1, "Leaving", { steamId: "100" });
+    await core.connect(leaving);
+    const character = await core.characters.create(leaving, { name: "Ominis Gaunt" });
+
+    // Another resource is still loading the character when the player disconnects.
+    const selecting = core.characters.select(leaving, character.id);
+    while (!emitted.some((event) => event.name === "hmp:character:loading")) await new Promise((resolve) => setImmediate(resolve));
+    assert.strictEqual(await core.disconnect(leaving), true);
+    finishLoading();
+    await assert.rejects(selecting, (error) => hasCode(error, "HMP_CORE_SESSION_MISSING"));
+    assert.ok(!emitted.some((event) => event.name === "hmp:character:loaded"), "the character was loaded into an ended session");
 
     const back = player(2, "Back", { steamId: "100" });
     await core.connect(back);

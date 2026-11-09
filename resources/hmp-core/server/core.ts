@@ -302,11 +302,20 @@ function createCore(options: CoreOptions) {
         const claimed = characterClaims.get(character.id);
         if (claimed && claimed !== session) throw fail("HMP_CORE_CHARACTER_IN_USE", "Character is active in another session");
         if (session.character) await unloadCharacter(player);
+        // The player can disconnect during any await here. Their disconnect has then run already, before the
+        // session held the character, so a claim left in place would never be released.
+        const ended = () => sessionsByPlayer.get(session.playerId) !== session;
+        const endedError = () => fail("HMP_CORE_SESSION_MISSING", "The player's session ended before the character was loaded");
+        if (ended()) throw endedError();
         characterClaims.set(character.id, session);
         try { await emit("hmp:character:loading", { session, character }); }
         catch (error) {
             if (characterClaims.get(character.id) === session) characterClaims.delete(character.id);
             throw error;
+        }
+        if (ended()) {
+            if (characterClaims.get(character.id) === session) characterClaims.delete(character.id);
+            throw endedError();
         }
         session.character = character;
         await emit("hmp:character:loaded", { session, character });

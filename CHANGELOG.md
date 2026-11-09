@@ -5,6 +5,14 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Fixed
+
+- `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before
+  the session held the character, so it left the character claimed by the ended session, and every later
+  `characters.select` or `characters.delete` of it was refused with `HMP_CORE_CHARACTER_IN_USE` until the
+  server restarted. `characters.select` now rejects with `HMP_CORE_SESSION_MISSING` instead, and raises no
+  `hmp:character:loaded` or `hmp:character:selected` for the ended session.
+
 ## [0.12.0] - 2026-11-12
 
 ### Added
