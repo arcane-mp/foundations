@@ -153,6 +153,8 @@ declare global {
         readonly pronoun?: boolean;
         /** Creator API 6: `hairColour` also takes a `"#rrggbb"` colour, in `applyPatch` and a look's presets. Absent on older clients. */
         readonly hairColourHex?: boolean;
+        /** Creator API 9: `Creator.previewVoice`. Absent on older clients. */
+        readonly voicePreview?: boolean;
     }
     interface HogwartsMpCreatorCategory {
         readonly options: readonly string[];
@@ -923,6 +925,11 @@ declare global {
         getState(): HogwartsMpCreatorState | null;
         applyPatch(patch: Record<string, string>): number;
         setVoice(voice: { tone?: number; pitch?: number }): boolean;
+        /**
+         * Creator API 9 (`voicePreview`): says the game creator's voice sample in the voice and pitch set now, cutting off
+         * one still playing. Requires an active session.
+         */
+        previewVoice?(): boolean;
         setName(first: string, last?: string): boolean;
         exportLook(): HogwartsMpLook | null;
         importLook(look: HogwartsMpLook | string): boolean;

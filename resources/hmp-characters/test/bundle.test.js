@@ -10,6 +10,7 @@ const emittedToServer = [];
 const emittedToWeb = [];
 const importedLooks = [];
 const patches = [];
+const voiceCalls = [];
 const viewUrls = [];
 let creatorBegun = 0;
 let creatorCommitted = 0;
@@ -87,7 +88,7 @@ const creatorState = {
     pronoun: "wizard",
 };
 const olderHost = { version: 3, session: true, sessionHolder: "none", schema: true, state: true, patch: true, preview: true, look: true };
-let capabilities = { ...olderHost, version: 6, facialHair: true, pronoun: true, hairColourHex: true };
+let capabilities = { ...olderHost, version: 9, facialHair: true, pronoun: true, hairColourHex: true, voicePreview: true };
 global.Creator = {
     getCapabilities: () => capabilities,
     begin() { creatorBegun++; return true; },
@@ -96,7 +97,8 @@ global.Creator = {
     getSchema: () => creatorSchema,
     getState: () => creatorState,
     applyPatch(patch) { patches.push(patch); return 1; },
-    setVoice: () => true,
+    setVoice(voice) { voiceCalls.push(`voice ${voice.tone} ${voice.pitch}`); return true; },
+    previewVoice() { voiceCalls.push("preview"); return true; },
     setName: () => true,
     exportLook: () => ({ format: "hogwartsmp-look", version: 6, gender: "female", presets: { hairStyle: "shared-look", hairColour: "#4a3020" }, gear: [], pronoun: "wizard" }),
     importLook(look) { importedLooks.push(look); return true; },
@@ -181,7 +183,11 @@ setTimeout(() => {
     clientHandlers.get("creatorChanged")({});
     const opened = last("hmp-creator:open");
     assert.strictEqual(opened.schema, creatorSchema);
-    assert.deepStrictEqual(opened.capabilities, { pronoun: true, hairColourHex: true });
+    assert.deepStrictEqual(opened.capabilities, { pronoun: true, hairColourHex: true, voicePreview: true });
+    // Each voice pick or pitch step says the sample in the voice it just set.
+    webHandlers.get("creator:voice")({ tone: 1, pitch: 2 });
+    webHandlers.get("creator:voice")({ tone: 1, pitch: 9 });
+    assert.deepStrictEqual(voiceCalls, ["voice 1 2", "preview", "voice 1 2", "preview"]);
     assert.strictEqual(opened.imported, true);
     assert.strictEqual(opened.state.pronoun, "wizard");
     // Slider 1 clears the clearable categories; their options start at 2.
@@ -202,7 +208,7 @@ setTimeout(() => {
     patches.length = 0;
     webHandlers.get("creator:hair-colour")({ colour: "#4A3020" });
     clientHandlers.get("creatorChanged")({});
-    assert.deepStrictEqual(last("hmp-creator:snapshot").capabilities, { pronoun: true, hairColourHex: true });
+    assert.deepStrictEqual(last("hmp-creator:snapshot").capabilities, { pronoun: true, hairColourHex: true, voicePreview: true });
     assert.strictEqual(last("hmp-creator:snapshot").state.selections.hairColour, "#4a3020");
     // The game takes the pick only when the saved look loads, so the copied JSON carries the page's.
     webHandlers.get("creator:export")({ dorm: "witch" });
@@ -224,8 +230,11 @@ setTimeout(() => {
     clientHandlers.get("hmp-characters:create")();
     assert.strictEqual(creatorBegun, 2);
     clientHandlers.get("creatorChanged")({});
-    assert.deepStrictEqual(last("hmp-creator:open").capabilities, { pronoun: false, hairColourHex: false });
+    assert.deepStrictEqual(last("hmp-creator:open").capabilities, { pronoun: false, hairColourHex: false, voicePreview: false });
     assert.strictEqual(last("hmp-creator:open").imported, false);
+    voiceCalls.length = 0;
+    webHandlers.get("creator:voice")({ tone: 0, pitch: -1 });
+    assert.deepStrictEqual(voiceCalls, ["voice 0 -1"]);
     patches.length = 0;
     webHandlers.get("creator:hair-colour")({ colour: "#4a3020" });
     assert.deepStrictEqual(patches, []);

@@ -5,6 +5,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Added
+
+- The `hmp-characters` creator says the game creator's voice sample at every voice pick and pitch step, as
+  the game's own creator does, on ArcaneMP clients whose Creator API offers `previewVoice` (the
+  `voicePreview` capability). Each sample cuts the one before it off. Older clients set the voice silently,
+  as before.
+
 ## [0.11.1] - 2026-11-08
 
 ### Changed
