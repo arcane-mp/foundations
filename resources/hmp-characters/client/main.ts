@@ -27,8 +27,8 @@ interface ClientCharacter extends HmpCharacterCard {
 
 type ClientModel = Omit<HmpCharacterUiModel, "characters"> & { characters: ClientCharacter[] };
 
-interface CreatorFeatures { pronoun: boolean; hairColourHex: boolean }
-const NO_CREATOR_FEATURES: CreatorFeatures = Object.freeze({ pronoun: false, hairColourHex: false });
+interface CreatorFeatures { pronoun: boolean; hairColourHex: boolean; voicePreview: boolean }
+const NO_CREATOR_FEATURES: CreatorFeatures = Object.freeze({ pronoun: false, hairColourHex: false, voicePreview: false });
 
 let view = -1;
 let pageReady = false;
@@ -218,7 +218,7 @@ function openCreator(): void {
     try {
         const capabilities = Creator.getCapabilities();
         supported = Boolean(capabilities?.session && capabilities?.schema && capabilities?.state && capabilities?.patch && capabilities?.preview && capabilities?.look);
-        features = { pronoun: capabilities?.pronoun === true, hairColourHex: capabilities?.hairColourHex === true };
+        features = { pronoun: capabilities?.pronoun === true, hairColourHex: capabilities?.hairColourHex === true, voicePreview: capabilities?.voicePreview === true };
         if (supported) begun = Creator.begin({ preserveCurrent: true });
     } catch (_) {
         supported = false;
@@ -507,7 +507,16 @@ function wireCreator(): void {
         const tone = Math.max(0, Math.min(1, Math.trunc(Number(input.tone)) || 0));
         const pitch = Math.max(-2, Math.min(2, Math.trunc(Number(input.pitch)) || 0));
         try { Creator.setVoice({ tone, pitch }); }
-        catch (_) { creatorError("The voice setting could not be applied."); }
+        catch (_) {
+            creatorError("The voice setting could not be applied.");
+            return;
+        }
+        // Like the game's own creator, say a sample line in the new voice. Each one cuts the last off, so the
+        // pitch slider can call it on every step.
+        if (creatorFeatures.voicePreview) {
+            try { Creator.previewVoice?.(); }
+            catch (_) { /* the preview is a nicety; the voice is already set */ }
+        }
     });
     Web.on(creatorView, "creator:name", (payload) => {
         if (!creatorVisible) return;
