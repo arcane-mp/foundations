@@ -5,12 +5,19 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-12
+
 ### Added
 
 - The `hmp-characters` creator says the game creator's voice sample at every voice pick and pitch step, as
   the game's own creator does, on ArcaneMP clients whose Creator API offers `previewVoice` (the
   `voicePreview` capability). Each sample cuts the one before it off. Older clients set the voice silently,
   as before.
+
+### Changed
+
+- Set the pack, all thirty resources, both gamemodes, and internal dependency pins to lockstep version
+  `0.12.0`.
 
 ## [0.11.1] - 2026-11-08
 
@@ -954,6 +961,7 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 - The initial admin resource focuses on moderation and corrective operations; spectate, noclip, and
   god mode are not included.
 
+[0.12.0]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.12.0
 [0.11.1]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.11.1
 [0.11.0]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.11.0
 [0.10.0]: https://github.com/hogwarts-mp/foundations/releases/tag/v0.10.0
