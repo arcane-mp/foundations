@@ -5,6 +5,19 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Fixed
+
+- `hmp-blips` no longer holds the server tick on busy servers. Every area change, join and leave
+  rebuilt every player's view, and each viewer asked hmp-core again about every player in every group:
+  one refresh at 60 players made 4,800 group lookups, two MySQL queries each, and ran inside the network
+  packet that raised it, where the server counts it as packet time. A refresh now resolves each audience
+  once and keeps hmp-core's group answers until a group, character or session change (30 seconds at
+  most). It sends a client its view only when that view changed, and a marker refresh for one player asks
+  the audience about that player alone. The events of the next 200 ms are gathered into one refresh,
+  which runs after the handlers that raised them. Selecting or unloading a character, and a session
+  starting or ending, now refresh blips too, and a marker or player group whose audience cannot be
+  resolved shows nobody without stopping the others.
+
 ## [0.12.0] - 2026-11-12
 
 ### Added

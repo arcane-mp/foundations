@@ -4,12 +4,13 @@ const path = require("node:path");
 const serverExports = new Map();
 const serverHandlers = new Map();
 const broadcasts = [];
+const sent = [];
 const player = {
     id: 1,
     nickname: "Smoke",
     position: { x: 1, y: 2, z: 3 },
     virtualWorld: 0,
-    emit() {},
+    emit: (name) => { sent.push(name); },
     sendChat() {},
     location: () => ({ areaId: "Hogwarts", regionId: "GreatHall", destinationId: null, x: 1, y: 2, z: 3, yaw: 0, revision: 1 }),
 };
@@ -45,6 +46,25 @@ void (async () => {
     await serverHandlers.get("client:hmp-blips:waypoint")(player, JSON.stringify({ waypoint: { x: 4, y: 5, z: 6, target: null } }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.deepStrictEqual(serverExports.get("waypoints").get(player), { x: 4, y: 5, z: 6, target: null, areaId: "Hogwarts" });
+
+    // These events arrive inside the packet that raised them, so their handlers only note the work, which runs a moment
+    // later, once for the burst.
+    for (const name of ["playerConnect", "playerDisconnect", "hmp:groups:changed", "hmp:jobs:duty", "hmp:character:selected", "hmp:character:unloaded", "hmp:session:ready", "hmp:session:ended"]) {
+        assert.ok(serverHandlers.has(name), `handles ${name}`);
+    }
+    let reads = 0;
+    global.PlayerManager = { getAll: () => { reads++; return [player]; } };
+    sent.length = 0;
+    serverHandlers.get("playerConnect")(player);
+    serverHandlers.get("playerLocationChanged")(player);
+    serverHandlers.get("hmp:session:ready")({ playerId: 1 });
+    serverHandlers.get("client:hmp-blips:ready")(player);
+    await Promise.resolve();
+    assert.strictEqual(reads, 0, "no handler reads the players itself");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.ok(reads > 0);
+    assert.strictEqual(sent.filter((name) => name === "hmp-blips:native-icons").length, 1, "one sync for the burst");
+    assert.ok(sent.includes("hmp-blips:replay") && sent.includes("hmp-blips:players"));
 
     const clientBundle = path.resolve(__dirname, "..", "dist", "client.js");
     function loadClient(waypoint, mapIcons) {
