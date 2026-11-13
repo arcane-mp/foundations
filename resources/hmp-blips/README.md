@@ -88,13 +88,20 @@ audience: {
 ```
 
 Group requirements use hmp-core's effective account/character groups, including groups projected by
-hmp-jobs. Resolvers and predicates are evaluated again for updates and replay. If a resolver,
-predicate, or group lookup throws, it resolves to nobody—scoped markers never fail open.
+hmp-jobs. Resolvers and predicates are evaluated again for updates and replay, once per refresh however
+many players are watching. hmp-core's group answers are kept between refreshes until hmp-core reports
+a group change, a character being selected or unloaded, or a session starting or ending, or 30 seconds
+pass. If a resolver, predicate, or group lookup throws or gives no answer within 5 seconds, it resolves
+to nobody—scoped markers never fail open—without holding up the other markers and groups, and a failed
+group lookup is asked again at the next refresh.
 
 Top-level `areaId`, `regionId`, and `virtualWorld` scope the marker itself. This is recommended for
 every coordinate-based marker: identical numbers do not identify the same place across game areas.
-`playerLocationChanged`, `hmp:groups:changed`, and `hmp:jobs:duty` automatically refresh audiences.
-Call `markers.sync()` after another application-specific resolver changes.
+`playerLocationChanged`, `hmp:groups:changed`, `hmp:jobs:duty`, character selection and unload, and
+sessions starting and ending automatically refresh audiences. A location, group, character or session
+change refreshes the markers of the player it is about, and a duty change everyone's. Call
+`markers.sync()` after another application-specific resolver changes, or when an audience depends on
+other players' groups or locations.
 
 ## Player tracking groups
 
@@ -128,7 +135,9 @@ groups only recolor them. Set it to false for the GTA-RP shape where only regist
 appear. This hides an icon, not network state; it is not a stealth or security mechanism.
 
 Call `players.refresh()` when a custom subject/audience predicate changes. Connect, disconnect,
-location, hmp-core group, and hmp-jobs duty changes refresh automatically.
+location, hmp-core group and character, and hmp-jobs duty changes refresh automatically: the events of
+the next 200 ms are gathered into one refresh, which runs after the handlers that raised them. A client
+is sent its view only when it changed, or in full when its blips resync.
 
 ## Map waypoints
 

@@ -26,6 +26,17 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   load, as it does when they leave before the session is ready. When another session still holds the
   character, the new session stays open at character selection and a warning is logged; `connect` used to
   reject, and the server kicked the player.
+- `hmp-blips` no longer holds the server tick on busy servers. Every area change, join and leave
+  rebuilt every player's view, and each viewer asked hmp-core again about every player in every group:
+  one refresh at 60 players made 4,800 group lookups, two MySQL queries each, and ran inside the network
+  packet that raised it, where the server counts it as packet time. A refresh now resolves each audience
+  once and keeps hmp-core's group answers until a group, character or session change (30 seconds at
+  most). A group change, which every character load makes, drops and refreshes only the player it names.
+  It sends a client its view only when that view changed, and a marker refresh for one player asks
+  the audience about that player alone. The events of the next 200 ms are gathered into one refresh,
+  which runs after the handlers that raised them. Selecting or unloading a character, and a session
+  starting or ending, now refresh blips too. A marker or player group whose audience cannot be
+  resolved, or gives no answer within 5 seconds, shows nobody without stopping the others.
 
 ## [0.12.0] - 2026-11-12
 

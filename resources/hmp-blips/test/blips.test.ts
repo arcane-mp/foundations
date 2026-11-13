@@ -360,4 +360,226 @@ async function nativeIcons(): Promise<void> {
     older.stop();
 }
 
-run().then(waypoints).then(nativeIcons).then(() => console.log("hmp-blips tests passed"));
+async function scale(): Promise<void> {
+    // Sixty players across two areas; every third is an Auror, and Aurors see the Aurors in their own area.
+    const players = Array.from({ length: 60 }, (_, index) => makePlayer(index + 1, index % 2 ? "Hogsmeade" : "Hogwarts"));
+    const aurors = new Set(players.filter((player) => player.id % 3 === 0).map((player) => player.id));
+    const failing = new Set<number>();
+    const hanging = new Set<number>();
+    let groupQueries = 0;
+    let playerReads = 0;
+    let clock = 1000;
+    const timers: Array<{ id: number; handler: () => void; delay: number }> = [];
+    let timerIds = 0;
+    const service = createBlipsService<TestPlayer>({
+        core: { groups: { has: async (player, key) => {
+            const id = Number(typeof player === "object" ? player.id : player);
+            groupQueries++;
+            if (failing.delete(id)) throw new Error("database down");
+            if (hanging.has(id)) return new Promise<boolean>(() => {});
+            return key === "job:auror" && aurors.has(id);
+        } } },
+        config: { defaultTtl: 600, maxTtl: 0, maxMarkersPerResource: 4, showAllPlayers: false, houseTint: true, playerBlipScale: 1, hideBaseIcon: false, nativeIcons: { hide: [], labels: {} }, enableCommands: false, command: "blips" },
+        players: () => { playerReads++; return players; },
+        events: { emit() {}, emitAllClients() {} },
+        logger: { warn() {}, error() {} },
+        now: () => clock,
+        setTimer: (handler, delay) => { timers.push({ id: ++timerIds, handler, delay }); return timerIds as unknown as ReturnType<typeof setTimeout>; },
+        clearTimer: (timer) => {
+            const index = timers.findIndex((entry) => entry.id === (timer as unknown as number));
+            if (index >= 0) timers.splice(index, 1);
+        },
+    });
+    // What each client holds: the last view it was sent, whatever the tests clear from its messages.
+    const shown = new Map<number, number[]>();
+    const watch = (player: TestPlayer) => {
+        const record = player.emit;
+        player.emit = function (name, raw) {
+            record.call(this, name, raw);
+            if (name === "hmp-blips:players") shown.set(this.id, JSON.parse(String(raw)).visible);
+        };
+        return player;
+    };
+    players.forEach(watch);
+    const views = (player: TestPlayer) => player.messages.filter((message) => message.name === "hmp-blips:players");
+    const lastView = (player: TestPlayer) => views(player).at(-1)?.payload as { visible: number[] } | undefined;
+    const expected = (viewer: TestPlayer) => players.filter((subject) => subject !== viewer && aurors.has(viewer.id) && aurors.has(subject.id) && subject.area === viewer.area).map((subject) => subject.id).sort((a, b) => a - b);
+    const settle = () => new Promise((resolve) => setImmediate(resolve));
+    const runTimers = async () => {
+        for (const timer of timers.splice(0)) timer.handler();
+        await settle();
+    };
+
+    // One question per player, shared by the audience and the subjects, where every viewer used to ask again.
+    await service.players.track({ resource: "hmp-test", id: "aurors", subjects: { groups: [{ key: "job:auror" }] }, audience: { groups: [{ key: "job:auror" }] }, sameArea: true });
+    assert.strictEqual(groupQueries, 60);
+    assert.ok(playerReads <= 2, `a refresh reads the player list ${playerReads} times`);
+    for (const player of players) assert.deepStrictEqual([...(lastView(player)?.visible || [])].sort((a, b) => a - b), expected(player));
+
+    // Kept answers are not asked again, and a view that did not change is not sent again.
+    groupQueries = 0;
+    for (const player of players) player.messages.length = 0;
+    assert.strictEqual(await service.players.refresh(), 60);
+    assert.strictEqual(groupQueries, 0);
+    assert.ok(players.every((player) => views(player).length === 0));
+
+    // An Auror walks to the other area: only the Aurors' views change, so only Aurors are sent one.
+    const walker = players[2];
+    walker.area = "Hogsmeade";
+    await service.players.refresh();
+    assert.deepStrictEqual(players.filter((player) => views(player).length).map((player) => player.id), [...aurors]);
+    assert.deepStrictEqual([...(lastView(walker)?.visible || [])].sort((a, b) => a - b), expected(walker));
+
+    // A burst of events is one pass, a moment later, outside the handlers that asked for it.
+    playerReads = 0;
+    for (let index = 0; index < 15; index++) service.schedule({ views: true });
+    service.schedule({ markers: 5 });
+    assert.strictEqual(timers.length, 1);
+    assert.ok(timers[0].delay > 0);
+    assert.strictEqual(playerReads, 0);
+    await runTimers();
+    assert.ok(playerReads <= 4, `a scheduled pass reads the player list ${playerReads} times`);
+
+    // A marker refresh for one player asks the audience about that player alone; for everyone, once each.
+    let asked = 0;
+    await service.markers.upsert({ resource: "hmp-test", id: "duty", kind: "marker", position: { x: 0, y: 0, z: 0 }, ttl: 0, audience: { where: () => { asked++; return true; } } });
+    asked = 0;
+    service.schedule({ markers: 5, views: true });
+    await runTimers();
+    assert.strictEqual(asked, 1);
+    assert.ok(players[4].messages.some((message) => message.name === "hmp-blips:replay"));
+    asked = 0;
+    service.schedule({ markers: true });
+    await runTimers();
+    assert.strictEqual(asked, 60);
+
+    // A kept answer holds until it is forgotten (a group, duty or character change), then only that player is asked.
+    aurors.add(1);
+    service.schedule({ views: true });
+    await runTimers();
+    assert.ok(!lastView(players[2])?.visible.includes(1) && !lastView(players[8])?.visible.includes(1));
+    groupQueries = 0;
+    service.forgetGroups(1);
+    service.schedule({ views: true });
+    await runTimers();
+    assert.strictEqual(groupQueries, 1);
+    assert.ok(lastView(players[8])?.visible.includes(1), "a Hogwarts Auror sees the new Auror");
+
+    // Answers expire on their own, and a failed one is asked again rather than kept. Aurors 6 and 12 are in Hogsmeade.
+    clock += 30_001;
+    failing.add(6);
+    groupQueries = 0;
+    await service.players.refresh();
+    assert.strictEqual(groupQueries, 60);
+    assert.ok(!lastView(players[11])?.visible.includes(6), "a failed lookup fails closed");
+    groupQueries = 0;
+    await service.players.refresh();
+    assert.strictEqual(groupQueries, 1);
+    assert.ok(lastView(players[11])?.visible.includes(6), "Auror 12 sees Auror 6 once the lookup works");
+
+    // A lookup that never answers fails closed after a while instead of holding up every later pass, so a player who
+    // joins meanwhile is still synced.
+    hanging.add(6);
+    service.forgetGroups(6);
+    service.schedule({ views: true });
+    await runTimers();
+    const late = watch(makePlayer(65, "Hogsmeade"));
+    players.push(late);
+    service.schedule({ sync: 65, views: true });
+    assert.ok(timers.some((timer) => timer.delay === 5_000), "the unanswered lookup is timed");
+    for (let round = 0; round < 3 && !late.messages.some((message) => message.name === "hmp-blips:native-icons"); round++) await runTimers();
+    assert.deepStrictEqual(late.messages.map((message) => message.name), ["hmp-blips:replay", "hmp-blips:players", "hmp-blips:native-icons"]);
+    assert.ok(!shown.get(12)?.includes(6), "the unanswered player fails closed");
+    hanging.delete(6);
+    await runTimers();
+    await service.players.refresh();
+    assert.ok(shown.get(12)?.includes(6), "and shows again once hmp-core answers");
+    players.splice(players.indexOf(late), 1);
+    service.disconnect(late);
+
+    // A sync sends a client everything again, even a view it already has.
+    for (const player of players) player.messages.length = 0;
+    service.schedule({ sync: 9 });
+    await runTimers();
+    assert.deepStrictEqual(players[8].messages.map((message) => message.name), ["hmp-blips:replay", "hmp-blips:players", "hmp-blips:native-icons"]);
+    assert.ok(players.every((player) => player.id === 9 || player.messages.length === 0));
+
+    // Overlapping passes. A gated marker audience and a gated player group (which adds nobody) hold a pass open.
+    const hold = () => {
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => { release = resolve; });
+        return { gate, release };
+    };
+    let markerGate: Promise<void> | null = null;
+    let groupGate: Promise<void> | null = null;
+    await service.markers.upsert({ resource: "hmp-test", id: "gated", kind: "marker", position: { x: 0, y: 0, z: 0 }, ttl: 0, audience: async () => { if (markerGate) await markerGate; return players; } });
+    await service.players.track({ resource: "hmp-test", id: "gated", subjects: async () => { if (groupGate) await groupGate; return []; } });
+
+    // A resync overtaken by another refresh still reaches its client, which may hold none of what it was sent.
+    const heldSync = hold();
+    groupGate = heldSync.gate;
+    for (const player of players) player.messages.length = 0;
+    service.schedule({ sync: 9 });
+    timers.splice(0)[0].handler();
+    await settle();
+    const overtaking = service.players.refresh();
+    groupGate = null;
+    heldSync.release();
+    await overtaking;
+    await settle();
+    assert.strictEqual(views(players[8]).length, 1, "client 9 is sent its view");
+    assert.ok(players.every((player) => player.id === 9 || views(player).length === 0));
+
+    // A pass held up in its replay works its views out afterwards, from the players connected then, so it cannot undo a
+    // refresh made meanwhile.
+    const heldReplay = hold();
+    markerGate = heldReplay.gate;
+    service.schedule({ markers: true, views: true });
+    timers.splice(0)[0].handler();
+    await settle();
+    const joiner = watch(makePlayer(63));
+    aurors.add(63);
+    players.push(joiner);
+    await service.players.refresh();
+    markerGate = null;
+    heldReplay.release();
+    await settle();
+    for (const player of players) assert.deepStrictEqual(shown.get(player.id) ?? [], expected(player), `view of #${player.id}`);
+
+    // An audience that throws fails closed for its own marker and keeps nothing else from the clients.
+    await assert.rejects(service.markers.upsert({ resource: "hmp-test", id: "broken", kind: "marker", position: { x: 0, y: 0, z: 0 }, ttl: 0, audience: { areaId: 123 as unknown as string } }));
+    const newcomer = watch(makePlayer(64, "Hogsmeade"));
+    players.push(newcomer);
+    service.schedule({ sync: 64, markers: true, views: true });
+    await runTimers();
+    assert.deepStrictEqual(newcomer.messages.map((message) => message.name), ["hmp-blips:replay", "hmp-blips:players", "hmp-blips:native-icons"]);
+    const replayKeys = (newcomer.messages[0].payload as { blips: Array<{ key: string }> }).blips.map((blip) => blip.key);
+    assert.ok(replayKeys.includes("hmp:hmp-test:gated") && !replayKeys.includes("hmp:hmp-test:broken"));
+    assert.ok(service.markers.remove("broken", "hmp-test"));
+
+    // A player who leaves while a pass is on its way is sent nothing by it.
+    const heldLeave = hold();
+    markerGate = heldLeave.gate;
+    for (const player of players) player.messages.length = 0;
+    service.schedule({ markers: true, views: true });
+    timers.splice(0)[0].handler();
+    await settle();
+    const leaver = players.find((player) => player.id === 60)!;
+    players.splice(players.indexOf(leaver), 1);
+    service.disconnect(leaver);
+    markerGate = null;
+    heldLeave.release();
+    await settle();
+    assert.strictEqual(leaver.messages.length, 0);
+    assert.ok(players.every((player) => player.messages.some((message) => message.name === "hmp-blips:replay")));
+    for (const player of players) assert.deepStrictEqual(shown.get(player.id) ?? [], expected(player), `view of #${player.id} after #60 left`);
+
+    service.stop();
+    service.schedule({ views: true });
+    assert.strictEqual(timers.length, 0, "a stopped service schedules nothing");
+}
+
+// A pass that never settles would otherwise end the run quietly, as if it had passed.
+let finished = false;
+process.on("beforeExit", () => { if (!finished) { console.error("hmp-blips tests stopped before the end"); process.exitCode = 1; } });
+run().then(waypoints).then(nativeIcons).then(scale).then(() => { finished = true; console.log("hmp-blips tests passed"); });
