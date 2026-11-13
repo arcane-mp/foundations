@@ -16,6 +16,15 @@ const IDENTITY_FIELDS: Readonly<Record<string, string>> = Object.freeze({
     hardwareId: "client-hardware",
 });
 const CLIENT_PROVIDER = "hmp-client-identity";
+// A load whose player disconnected keeps the character claimed until its loading handlers return, so a new
+// session cannot load it alongside them. This bounds a handler that never returns.
+const ABANDONED_LOAD_RELEASE_MS = 30_000;
+
+interface PendingSelect {
+    readonly characterId: number;
+    readonly result: Promise<HmpCoreCharacter>;
+    abandoned?: ReturnType<typeof setTimeout>;
+}
 
 function fail(code: string, message: string): Error & { code: string } {
     const error = new Error(message);
@@ -69,6 +78,10 @@ function createCore(options: CoreOptions) {
     let startPromise: Promise<boolean> | null = null;
     const sessionsByPlayer = new Map<number, HmpCoreSession<Player>>();
     const characterClaims = new Map<number, HmpCoreSession<Player>>();
+    // The select each session is running; a session runs one at a time.
+    const selecting = new WeakMap<HmpCoreSession<Player>, PendingSelect>();
+    // Sessions whose unloadCharacter is still waiting on its hmp:character:unloading handlers.
+    const unloading = new WeakSet<HmpCoreSession<Player>>();
     const attempts = new Map<number, symbol>();
     const providers = new Map<string, ProviderEntry>();
 
@@ -84,6 +97,20 @@ function createCore(options: CoreOptions) {
         if (!events || typeof events.emit !== "function") return;
         try { await events.emit(name, payload); }
         catch (error) { logError(`[hmp-core] ${name} handler failed`, error); }
+    }
+
+    function releaseClaim(characterId: number, session: HmpCoreSession<Player>): void {
+        if (characterClaims.get(characterId) === session) characterClaims.delete(characterId);
+    }
+
+    function claimedElsewhere(characterId: number, session: HmpCoreSession<Player>): boolean {
+        const claimed = characterClaims.get(characterId);
+        return Boolean(claimed && claimed !== session);
+    }
+
+    // A player can disconnect during any await of a select or an unload, and their disconnect has then run.
+    function sessionEnded(session: HmpCoreSession<Player>): boolean {
+        return sessionsByPlayer.get(session.playerId) !== session;
     }
 
     function registerProvider(definition: HmpCoreIdentityProvider<Player>): () => boolean {
@@ -228,7 +255,17 @@ function createCore(options: CoreOptions) {
 
             if (config.autoSelectSingleCharacter) {
                 const available = await repository.listCharacters(account.id);
-                if (available.length === 1) await selectCharacter(player, available[0].id);
+                if (available.length === 1) {
+                    try { await selectCharacter(player, available[0].id); }
+                    catch (error) {
+                        // A player who left during the load gets null, as one who left before the session did.
+                        if (sessionEnded(session)) return null;
+                        // Another session holds the character, such as one whose load is still finishing after its
+                        // player left. This session stays open and the player picks a character themselves.
+                        if ((error as { code?: unknown })?.code !== "HMP_CORE_CHARACTER_IN_USE") throw error;
+                        logWarn(`[hmp-core] Did not auto-select character ${available[0].id} for account ${account.id}: it is active in another session`);
+                    }
+                }
             }
             return session;
         } finally {
@@ -240,11 +277,28 @@ function createCore(options: CoreOptions) {
         const session = requireSession(player);
         if (!session.character) return null;
         const character = session.character;
+        unloading.add(session);
+        // emit() reports a handler's error itself and never rejects.
         await emit("hmp:character:unloading", { session, character });
+        unloading.delete(session);
+        // A disconnect while the handlers ran has raised hmp:character:unloaded and released the claim.
+        if (sessionEnded(session)) return character;
         session.character = null;
-        if (characterClaims.get(character.id) === session) characterClaims.delete(character.id);
+        releaseClaim(character.id, session);
         await emit("hmp:character:unloaded", { session, character });
         return character;
+    }
+
+    // The select of a session that just ended, if it is still loading, keeps its claim until its loading
+    // handlers return. If they have not returned by the deadline, the claim is released anyway.
+    function abandonSelect(session: HmpCoreSession<Player>): void {
+        const pending = selecting.get(session);
+        if (!pending || characterClaims.get(pending.characterId) !== session) return;
+        pending.abandoned = setTimeout(() => {
+            if (characterClaims.get(pending.characterId) !== session) return;
+            characterClaims.delete(pending.characterId);
+            logWarn(`[hmp-core] Released character ${pending.characterId}: its load was still running ${ABANDONED_LOAD_RELEASE_MS / 1000} s after its player disconnected`);
+        }, ABANDONED_LOAD_RELEASE_MS);
     }
 
     async function disconnect(player: Player): Promise<boolean> {
@@ -257,10 +311,13 @@ function createCore(options: CoreOptions) {
         const teardown: Promise<void>[] = [];
         const character = session.character;
         if (character) {
-            teardown.push(emit("hmp:character:unloading", { session, character }));
+            // An unload in progress raised hmp:character:unloading already and leaves the rest to this teardown.
+            if (!unloading.has(session)) teardown.push(emit("hmp:character:unloading", { session, character }));
             session.character = null;
-            if (characterClaims.get(character.id) === session) characterClaims.delete(character.id);
+            releaseClaim(character.id, session);
             teardown.push(emit("hmp:character:unloaded", { session, character }));
+        } else {
+            abandonSelect(session);
         }
         sessionsByPlayer.delete(id);
         teardown.push(emit("hmp:session:ended", session));
@@ -294,31 +351,52 @@ function createCore(options: CoreOptions) {
 
     async function selectCharacter(player: Player | number, characterId: number): Promise<HmpCoreCharacter> {
         const session = requireSession(player);
-        const character = await repository.findCharacterById(positiveId(characterId, "characterId"));
+        const id = positiveId(characterId, "characterId");
+        // One select at a time per session. A second pick of the same character shares the first one's result;
+        // a pick of another is refused, so one player never has two loads running and none is left claimed.
+        const running = selecting.get(session);
+        if (running) {
+            if (running.characterId === id) return running.result;
+            throw fail("HMP_CORE_CHARACTER_LOADING", "Another character is still loading for this player");
+        }
+        const pending: PendingSelect = { characterId: id, result: loadCharacter(player, session, id) };
+        selecting.set(session, pending);
+        try { return await pending.result; }
+        finally {
+            if (pending.abandoned) clearTimeout(pending.abandoned);
+            if (selecting.get(session) === pending) selecting.delete(session);
+        }
+    }
+
+    async function loadCharacter(player: Player | number, session: HmpCoreSession<Player>, characterId: number): Promise<HmpCoreCharacter> {
+        // The session is checked again after every await: a claim taken for a session that has ended would never
+        // be released, and no event is raised for it once hmp:session:ended has been.
+        const endedError = () => fail("HMP_CORE_SESSION_MISSING", "The player's session ended before the character was selected");
+        const inUseError = () => fail("HMP_CORE_CHARACTER_IN_USE", "Character is active in another session");
+        const character = await repository.findCharacterById(characterId);
+        if (sessionEnded(session)) throw endedError();
         if (!character || character.accountId !== session.account.id || character.status !== "active") {
             throw fail("HMP_CORE_CHARACTER_NOT_FOUND", "Character does not belong to this account");
         }
         if (session.character?.id === character.id) return character;
-        const claimed = characterClaims.get(character.id);
-        if (claimed && claimed !== session) throw fail("HMP_CORE_CHARACTER_IN_USE", "Character is active in another session");
-        if (session.character) await unloadCharacter(player);
-        // The player can disconnect during any await here. Their disconnect has then run already, before the
-        // session held the character, so a claim left in place would never be released.
-        const ended = () => sessionsByPlayer.get(session.playerId) !== session;
-        const endedError = () => fail("HMP_CORE_SESSION_MISSING", "The player's session ended before the character was loaded");
-        if (ended()) throw endedError();
-        characterClaims.set(character.id, session);
-        try { await emit("hmp:character:loading", { session, character }); }
-        catch (error) {
-            if (characterClaims.get(character.id) === session) characterClaims.delete(character.id);
-            throw error;
+        if (claimedElsewhere(character.id, session)) throw inUseError();
+        if (session.character) {
+            await unloadCharacter(player);
+            if (sessionEnded(session)) throw endedError();
+            // Another session of the account may have taken the character while this one unloaded its last.
+            if (claimedElsewhere(character.id, session)) throw inUseError();
         }
-        if (ended()) {
-            if (characterClaims.get(character.id) === session) characterClaims.delete(character.id);
+        characterClaims.set(character.id, session);
+        // emit() reports a handler's error itself and never rejects, so the load always reaches this check.
+        await emit("hmp:character:loading", { session, character });
+        if (sessionEnded(session)) {
+            releaseClaim(character.id, session);
             throw endedError();
         }
         session.character = character;
         await emit("hmp:character:loaded", { session, character });
+        // A disconnect during hmp:character:loaded unloaded the character and released its claim.
+        if (sessionEnded(session)) throw endedError();
         await emit("hmp:character:selected", { session, character });
         return character;
     }
@@ -329,8 +407,7 @@ function createCore(options: CoreOptions) {
         if (!character || character.accountId !== session.account.id || character.status !== "active") {
             throw fail("HMP_CORE_CHARACTER_NOT_FOUND", "Character does not belong to this account");
         }
-        const claimed = characterClaims.get(character.id);
-        if (claimed && claimed !== session) throw fail("HMP_CORE_CHARACTER_IN_USE", "Character is active in another session");
+        if (claimedElsewhere(character.id, session)) throw fail("HMP_CORE_CHARACTER_IN_USE", "Character is active in another session");
         if (session.character?.id === character.id) await unloadCharacter(player);
         const deleted = await repository.deleteCharacter(character.id);
         if (deleted) await emit("hmp:character:deleted", { session, character });
