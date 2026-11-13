@@ -365,15 +365,18 @@ async function scale(): Promise<void> {
     const players = Array.from({ length: 60 }, (_, index) => makePlayer(index + 1, index % 2 ? "Hogsmeade" : "Hogwarts"));
     const aurors = new Set(players.filter((player) => player.id % 3 === 0).map((player) => player.id));
     const failing = new Set<number>();
+    const hanging = new Set<number>();
     let groupQueries = 0;
     let playerReads = 0;
     let clock = 1000;
-    const timers: Array<{ handler: () => void; delay: number }> = [];
+    const timers: Array<{ id: number; handler: () => void; delay: number }> = [];
+    let timerIds = 0;
     const service = createBlipsService<TestPlayer>({
         core: { groups: { has: async (player, key) => {
             const id = Number(typeof player === "object" ? player.id : player);
             groupQueries++;
             if (failing.delete(id)) throw new Error("database down");
+            if (hanging.has(id)) return new Promise<boolean>(() => {});
             return key === "job:auror" && aurors.has(id);
         } } },
         config: { defaultTtl: 600, maxTtl: 0, maxMarkersPerResource: 4, showAllPlayers: false, houseTint: true, playerBlipScale: 1, hideBaseIcon: false, nativeIcons: { hide: [], labels: {} }, enableCommands: false, command: "blips" },
@@ -381,8 +384,11 @@ async function scale(): Promise<void> {
         events: { emit() {}, emitAllClients() {} },
         logger: { warn() {}, error() {} },
         now: () => clock,
-        setTimer: (handler, delay) => { timers.push({ handler, delay }); return timers.length as unknown as ReturnType<typeof setTimeout>; },
-        clearTimer() {},
+        setTimer: (handler, delay) => { timers.push({ id: ++timerIds, handler, delay }); return timerIds as unknown as ReturnType<typeof setTimeout>; },
+        clearTimer: (timer) => {
+            const index = timers.findIndex((entry) => entry.id === (timer as unknown as number));
+            if (index >= 0) timers.splice(index, 1);
+        },
     });
     // What each client holds: the last view it was sent, whatever the tests clear from its messages.
     const shown = new Map<number, number[]>();
@@ -471,6 +477,26 @@ async function scale(): Promise<void> {
     assert.strictEqual(groupQueries, 1);
     assert.ok(lastView(players[11])?.visible.includes(6), "Auror 12 sees Auror 6 once the lookup works");
 
+    // A lookup that never answers fails closed after a while instead of holding up every later pass, so a player who
+    // joins meanwhile is still synced.
+    hanging.add(6);
+    service.forgetGroups(6);
+    service.schedule({ views: true });
+    await runTimers();
+    const late = watch(makePlayer(65, "Hogsmeade"));
+    players.push(late);
+    service.schedule({ sync: 65, views: true });
+    assert.ok(timers.some((timer) => timer.delay === 5_000), "the unanswered lookup is timed");
+    for (let round = 0; round < 3 && !late.messages.some((message) => message.name === "hmp-blips:native-icons"); round++) await runTimers();
+    assert.deepStrictEqual(late.messages.map((message) => message.name), ["hmp-blips:replay", "hmp-blips:players", "hmp-blips:native-icons"]);
+    assert.ok(!shown.get(12)?.includes(6), "the unanswered player fails closed");
+    hanging.delete(6);
+    await runTimers();
+    await service.players.refresh();
+    assert.ok(shown.get(12)?.includes(6), "and shows again once hmp-core answers");
+    players.splice(players.indexOf(late), 1);
+    service.disconnect(late);
+
     // A sync sends a client everything again, even a view it already has.
     for (const player of players) player.messages.length = 0;
     service.schedule({ sync: 9 });
@@ -553,4 +579,7 @@ async function scale(): Promise<void> {
     assert.strictEqual(timers.length, 0, "a stopped service schedules nothing");
 }
 
-run().then(waypoints).then(nativeIcons).then(scale).then(() => console.log("hmp-blips tests passed"));
+// A pass that never settles would otherwise end the run quietly, as if it had passed.
+let finished = false;
+process.on("beforeExit", () => { if (!finished) { console.error("hmp-blips tests stopped before the end"); process.exitCode = 1; } });
+run().then(waypoints).then(nativeIcons).then(scale).then(() => { finished = true; console.log("hmp-blips tests passed"); });

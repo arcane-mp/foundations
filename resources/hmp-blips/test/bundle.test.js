@@ -15,6 +15,12 @@ const player = {
     location: () => ({ areaId: "Hogwarts", regionId: "GreatHall", destinationId: null, x: 1, y: 2, z: 3, yaw: 0, revision: 1 }),
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {} };
+let lookups = 0;
+const sessions = [
+    { playerId: 1, account: { id: 21 }, character: { id: 11 } },
+    { playerId: 2, account: { id: 22 }, character: { id: 12 } },
+];
+const core = { groups: { has: async () => { lookups++; return true; } }, sessions: { all: () => sessions } };
 const router = { register() {}, handle() {} };
 global.Exports = { register: (name, value) => serverExports.set(name, value) };
 global.Imports = { get: (name) => {
@@ -24,7 +30,7 @@ global.Imports = { get: (name) => {
         config: { load: (_path, options) => options.defaults, env: { boolean: (_value, fallback) => fallback } },
         command: { createRouter: () => router },
     };
-    if (name === "hmp-core") return { groups: { has: async () => true } };
+    if (name === "hmp-core") return core;
     throw new Error(`Unexpected import ${name}`);
 } };
 global.PlayerManager = { getAll: () => [player] };
@@ -65,6 +71,34 @@ void (async () => {
     assert.ok(reads > 0);
     assert.strictEqual(sent.filter((name) => name === "hmp-blips:native-icons").length, 1, "one sync for the burst");
     assert.ok(sent.includes("hmp-blips:replay") && sent.includes("hmp-blips:players"));
+
+    // A group change names one account or character: only its player is asked again and has their markers replayed.
+    const secondSent = [];
+    const second = { ...player, id: 2, nickname: "Other", emit: (name) => { secondSent.push(name); } };
+    global.PlayerManager = { getAll: () => [player, second] };
+    await serverExports.get("markers").upsert({ resource: "smoke", id: "aurors", kind: "marker", position: { x: 0, y: 0, z: 0 }, ttl: 0, audience: { groups: [{ key: "job:auror" }] } });
+    const wait = () => new Promise((resolve) => setTimeout(resolve, 300));
+    lookups = 0;
+    sent.length = 0;
+    secondSent.length = 0;
+    serverHandlers.get("hmp:groups:changed")({ action: "set", ownerId: 11, group: { scope: "character", key: "job:auror", grade: 0, metadata: {} } });
+    await wait();
+    assert.strictEqual(lookups, 1, "only the changed character's player is asked again");
+    assert.ok(sent.includes("hmp-blips:replay") && !secondSent.includes("hmp-blips:replay"));
+    lookups = 0;
+    sent.length = 0;
+    serverHandlers.get("hmp:groups:changed")({ action: "remove", scope: "account", ownerId: 22, key: "job:auror" });
+    await wait();
+    assert.strictEqual(lookups, 1, "only the changed account's player is asked again");
+    assert.ok(secondSent.includes("hmp-blips:replay") && !sent.includes("hmp-blips:replay"));
+    lookups = 0;
+    sent.length = 0;
+    secondSent.length = 0;
+    serverHandlers.get("hmp:groups:changed")({});
+    await wait();
+    assert.strictEqual(lookups, 2, "a change that names nobody asks about everyone");
+    assert.ok(sent.includes("hmp-blips:replay") && secondSent.includes("hmp-blips:replay"));
+    global.PlayerManager = { getAll: () => [player] };
 
     const clientBundle = path.resolve(__dirname, "..", "dist", "client.js");
     function loadClient(waypoint, mapIcons) {

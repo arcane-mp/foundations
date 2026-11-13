@@ -84,8 +84,8 @@ const WAYPOINT_ICON = "UI_T_MiniMap_Waypoint";
 const REFRESH_DELAY_MS = 200;
 /** How long an hmp-core group answer is kept when no group, duty or character change says otherwise. */
 const MEMBERSHIP_TTL_MS = 30_000;
-/** How long passes wait on the same group lookup before asking hmp-core again. */
-const PENDING_LOOKUP_MS = 5_000;
+/** How long a pass waits on one group lookup, resolver or predicate before that answer fails closed. */
+const ANSWER_TIMEOUT_MS = 5_000;
 
 function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDependencies<P>): HmpBlipsServer<P> & {
     cleanup(resource: string): Promise<number>;
@@ -113,7 +113,8 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
     const playerReplayTokens = new Map<number, number>();
     // The view each client was last sent, as sent: a view that has not changed is not sent again.
     const sentViews = new Map<number, string>();
-    const memberships = new Map<string, { at: number; value: Promise<boolean>; settled: boolean }>();
+    const memberships = new Map<string, { at: number; value: Promise<boolean> }>();
+    const answerTimers = new Set<ReturnType<typeof setTimeout>>();
     const waypoints = new Map<number, HmpBlipWaypoint>();
     const waypointShares = new Map<string, WaypointShareRecord<P>>();
     let pending: { views: boolean; markers: boolean; markerPlayers: Set<number>; syncs: Set<number> } | null = null;
@@ -169,18 +170,31 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
         return Boolean(value && typeof value !== "string" && typeof (value as Iterable<unknown>)[Symbol.iterator] === "function");
     }
 
+    // Passes run one at a time, so an answer that never comes would hold up every later one. It fails instead.
+    function bounded<T>(value: T | PromiseLike<T>, what: string): T | Promise<T> {
+        if (!value || typeof (value as PromiseLike<T>).then !== "function") return value as T;
+        return new Promise<T>((resolve, reject) => {
+            const timer = setTimer(() => {
+                answerTimers.delete(timer);
+                reject(new Error(`${what} gave no answer within ${ANSWER_TIMEOUT_MS / 1000} s`));
+            }, ANSWER_TIMEOUT_MS);
+            answerTimers.add(timer);
+            const done = () => { answerTimers.delete(timer); clearTimer(timer); };
+            (value as PromiseLike<T>).then((result) => { done(); resolve(result); }, (error) => { done(); reject(error); });
+        });
+    }
+
     function hasGroup(player: P, key: string, minimumGrade: number): Promise<boolean> {
         const cacheKey = `${Number(player.id)}\u0000${key}\u0000${minimumGrade}`;
         const cached = memberships.get(cacheKey);
-        // A lookup still on its way is shared only briefly, so one that never answers holds up few passes.
-        if (cached && now() - cached.at < (cached.settled ? MEMBERSHIP_TTL_MS : PENDING_LOOKUP_MS)) return cached.value;
+        if (cached && now() - cached.at < MEMBERSHIP_TTL_MS) return cached.value;
         let value: Promise<boolean>;
-        try { value = Promise.resolve(core.groups.has(player, key, minimumGrade)); }
+        try { value = Promise.resolve(bounded(core.groups.has(player, key, minimumGrade), `hmp-core's '${key}' lookup for #${player.id}`)); }
         catch (error) { value = Promise.reject(error); }
-        const entry = { at: now(), value, settled: false };
+        const entry = { at: now(), value };
         memberships.set(cacheKey, entry);
-        // A failed lookup is not kept: the next pass asks again.
-        value.then(() => { entry.settled = true; }, () => { if (memberships.get(cacheKey) === entry) memberships.delete(cacheKey); });
+        // A failed or unanswered lookup is not kept: the next pass asks again.
+        value.catch(() => { if (memberships.get(cacheKey) === entry) memberships.delete(cacheKey); });
         return value;
     }
 
@@ -194,7 +208,7 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
         if (source === undefined || source === null || source === "all") return pass.players;
         let value = source;
         if (typeof source === "function") {
-            try { value = await source(); }
+            try { value = await bounded(source(), `${label} resolver`); }
             catch (error) { logger.warn(`[hmp-blips] ${label} resolver failed closed`, error); return []; }
         }
         if (!iterable(value)) return [];
@@ -246,12 +260,12 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
         });
         if (selector.virtualWorld !== undefined) candidates = candidates.filter((player) => Number(player.virtualWorld || 0) === Number(selector.virtualWorld));
         if (selector.where) {
-            const filtered: P[] = [];
-            for (const player of candidates) {
-                try { if (await selector.where(player)) filtered.push(player); }
-                catch (error) { logger.warn(`[hmp-blips] ${label} predicate failed closed for #${player.id}`, error); }
-            }
-            candidates = filtered;
+            const where = selector.where;
+            const kept = await Promise.all(candidates.map(async (player) => {
+                try { return Boolean(await bounded(where(player), `${label} predicate for #${player.id}`)); }
+                catch (error) { logger.warn(`[hmp-blips] ${label} predicate failed closed for #${player.id}`, error); return false; }
+            }));
+            candidates = candidates.filter((_, index) => kept[index]);
         }
         return candidates;
     }
@@ -623,7 +637,9 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
 
     async function syncMarkers(player?: P): Promise<number> {
         if (player) { await replayMarkers(new Set([Number(player.id)])); return 1; }
-        return (await replayMarkers()).size;
+        const count = connectedPlayers().length;
+        await replayMarkers();
+        return count;
     }
 
     async function flush(): Promise<void> {
@@ -657,7 +673,7 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
         if (!pendingTimer) pendingTimer = setTimer(() => {
             pendingTimer = null;
             // One pass at a time, so an earlier one never lands after a later one.
-            flushing = flushing.then(flush);
+            flushing = flushing.then(flush).catch((error) => { logger.warn("[hmp-blips] a refresh failed", error); });
         }, REFRESH_DELAY_MS);
     }
 
@@ -796,6 +812,8 @@ function createBlipsService<P extends HmpBlipPlayer>(dependencies: ServiceDepend
         pendingTimer = null;
         pending = null;
         for (const record of markers.values()) disarm(record);
+        for (const timer of answerTimers) clearTimer(timer);
+        answerTimers.clear();
         markers.clear();
         playerGroups.clear();
         waypoints.clear();

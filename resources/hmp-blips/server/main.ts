@@ -38,9 +38,27 @@ Events.on("playerDisconnect", (player: HmpBlipPlayer) => {
     blips.schedule({ views: true });
 });
 Events.on("playerLocationChanged", (player: HmpBlipPlayer) => blips.schedule({ markers: Number(player.id), views: true }));
-// Group answers are kept between refreshes; a group change, a character and a session are what change them. Duty is no
-// group: a predicate that reads it is asked again at every refresh.
-Events.on("hmp:groups:changed", () => { blips.forgetGroups(); blips.schedule({ markers: true, views: true }); });
+// The online players a group change is about, or undefined when the change does not say whose it is.
+function groupChangePlayers(change: unknown): number[] | undefined {
+    const value = change as { scope?: unknown; ownerId?: unknown; group?: { scope?: unknown } } | null;
+    const scope = value?.group?.scope ?? value?.scope;
+    const ownerId = Number(value?.ownerId);
+    if ((scope !== "account" && scope !== "character") || !Number.isSafeInteger(ownerId)) return undefined;
+    try {
+        return core.sessions.all()
+            .filter((session) => (scope === "account" ? session.account?.id : session.character?.id) === ownerId)
+            .map((session) => Number(session.playerId));
+    } catch (_) { return undefined; }
+}
+
+// Group answers are kept between refreshes; a group change, a character and a session are what change them. Every
+// character load changes groups (hmp-houses and hmp-jobs project them), so a change refreshes only whom it is about.
+// Duty is no group: a predicate that reads it is asked again at every refresh.
+Events.on("hmp:groups:changed", (change: unknown) => {
+    const ids = groupChangePlayers(change);
+    if (!ids) { blips.forgetGroups(); blips.schedule({ markers: true, views: true }); return; }
+    for (const id of ids) { blips.forgetGroups(id); blips.schedule({ markers: id, views: true }); }
+});
 Events.on("hmp:jobs:duty", () => blips.schedule({ markers: true, views: true }));
 for (const name of ["hmp:character:selected", "hmp:character:unloaded", "hmp:session:ready", "hmp:session:ended"]) Events.on(name, (payload: unknown) => {
     const id = sessionPlayerId(payload);

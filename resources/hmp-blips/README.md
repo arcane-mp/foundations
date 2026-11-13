@@ -91,15 +91,17 @@ Group requirements use hmp-core's effective account/character groups, including 
 hmp-jobs. Resolvers and predicates are evaluated again for updates and replay, once per refresh however
 many players are watching. hmp-core's group answers are kept between refreshes until hmp-core reports
 a group change, a character being selected or unloaded, or a session starting or ending, or 30 seconds
-pass. If a resolver, predicate, or group lookup throws, it resolves to nobody—scoped markers never fail
-open—without holding up the other markers and groups, and a failed group lookup is asked again at the
-next refresh.
+pass. If a resolver, predicate, or group lookup throws or gives no answer within 5 seconds, it resolves
+to nobody—scoped markers never fail open—without holding up the other markers and groups, and a failed
+group lookup is asked again at the next refresh.
 
 Top-level `areaId`, `regionId`, and `virtualWorld` scope the marker itself. This is recommended for
 every coordinate-based marker: identical numbers do not identify the same place across game areas.
 `playerLocationChanged`, `hmp:groups:changed`, `hmp:jobs:duty`, character selection and unload, and
-sessions starting and ending automatically refresh audiences. Call `markers.sync()` after another
-application-specific resolver changes.
+sessions starting and ending automatically refresh audiences. A location, group, character or session
+change refreshes the markers of the player it is about, and a duty change everyone's. Call
+`markers.sync()` after another application-specific resolver changes, or when an audience depends on
+other players' groups or locations.
 
 ## Player tracking groups
 
