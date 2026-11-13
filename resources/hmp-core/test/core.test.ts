@@ -106,7 +106,7 @@ function memoryRepository() {
     return repository;
 }
 
-function setup(overrides: Partial<CoreConfig> = {}) {
+function setup(overrides: Partial<CoreConfig> = {}, onEmit?: (name: string) => Promise<void> | undefined) {
     const emitted: RecordedEvent[] = [];
     const warnings: string[] = [];
     const migrated: Array<{ resource: string; list: HmpMySQLMigration[] }> = [];
@@ -119,7 +119,7 @@ function setup(overrides: Partial<CoreConfig> = {}) {
         repository,
         database,
         migrations,
-        events: { emit: (name: string, payload: unknown) => emitted.push({ name, payload }) },
+        events: { emit: (name: string, payload: unknown) => { emitted.push({ name, payload }); return onEmit?.(name); } },
         listPlayers: () => [],
         logger: { error: () => true, warn: (message: unknown) => warnings.push(String(message)) > 0 },
         config: {
@@ -287,6 +287,266 @@ test("raises every disconnect teardown event before yielding", async () => {
     const back = player(2, "Back", { steamId: "100" });
     await core.connect(back);
     assert.strictEqual((await core.characters.select(back, character.id)).id, character.id, "the character's claim was not released");
+});
+
+// Holds any event named in `held` until released, so a test can act while a handler is still running.
+function gate() {
+    const held = new Set<string>();
+    const pending: Array<{ name: string; release: () => void }> = [];
+    const onEmit = (name: string): Promise<void> | undefined => {
+        if (!held.has(name)) return undefined;
+        return new Promise<void>((resolve) => { pending.push({ name, release: resolve }); });
+    };
+    const release = (name?: string) => {
+        for (const entry of pending.filter((item) => !name || item.name === name)) {
+            pending.splice(pending.indexOf(entry), 1);
+            entry.release();
+        }
+    };
+    return { held, pending, onEmit, release };
+}
+
+// Fails the test, instead of hanging it, when what it waits for never happens.
+async function until(predicate: () => boolean, label: string): Promise<void> {
+    for (let turn = 0; turn < 1000; turn += 1) {
+        if (predicate()) return;
+        await new Promise((resolve) => setImmediate(resolve));
+    }
+    throw new Error(`timed out waiting for ${label}`);
+}
+
+const codeOf = (error: unknown) => (error && typeof error === "object" && "code" in error ? String(error.code) : String(error));
+
+test("releases a character whose player disconnects while it is loading", async () => {
+    const g = gate();
+    g.held.add("hmp:character:loading");
+    const { core, emitted } = setup({}, g.onEmit);
+    await core.start();
+    const leaving = player(1, "Leaving", { steamId: "100" });
+    await core.connect(leaving);
+    const character = await core.characters.create(leaving, { name: "Ominis Gaunt" });
+
+    // Another resource is still loading the character when the player disconnects.
+    const selecting = core.characters.select(leaving, character.id).then(() => "selected", codeOf);
+    await until(() => g.pending.length === 1, "the load");
+    assert.strictEqual(await core.disconnect(leaving), true);
+    g.held.clear();
+    g.release();
+    assert.strictEqual(await selecting, "HMP_CORE_SESSION_MISSING");
+    const names = emitted.map((event) => event.name);
+    assert.ok(!names.includes("hmp:character:loaded"), "the character was loaded into an ended session");
+    assert.ok(!names.includes("hmp:character:selected"), "the character was selected for an ended session");
+
+    const back = player(2, "Back", { steamId: "100" });
+    await core.connect(back);
+    assert.strictEqual((await core.characters.select(back, character.id)).id, character.id, "the character's claim was not released");
+});
+
+test("takes no claim for a session that ended before the load began", async () => {
+    const { core, repository, emitted } = setup();
+    await core.start();
+    const leaving = player(1, "Leaving", { steamId: "100" });
+    await core.connect(leaving);
+    const character = await core.characters.create(leaving, { name: "Ominis Gaunt" });
+
+    // The player disconnects while the character's row is still being read.
+    const findCharacterById = repository.findCharacterById.bind(repository);
+    let finishRead = () => {};
+    const read = new Promise<void>((resolve) => { finishRead = resolve; });
+    let reading = false;
+    repository.findCharacterById = async (id: number) => {
+        reading = true;
+        await read;
+        return findCharacterById(id);
+    };
+    const selecting = core.characters.select(leaving, character.id).then(() => "selected", codeOf);
+    await until(() => reading, "the read");
+    await core.disconnect(leaving);
+    finishRead();
+    assert.strictEqual(await selecting, "HMP_CORE_SESSION_MISSING");
+    assert.ok(!emitted.some((event) => event.name === "hmp:character:loading"), "a load began for an ended session");
+
+    repository.findCharacterById = findCharacterById;
+    const back = player(2, "Back", { steamId: "100" });
+    await core.connect(back);
+    assert.strictEqual((await core.characters.select(back, character.id)).id, character.id, "the character's claim was not released");
+});
+
+test("runs one select at a time in a session and leaves no claim behind", async () => {
+    const g = gate();
+    g.held.add("hmp:character:loading");
+    const { core, emitted } = setup({}, g.onEmit);
+    await core.start();
+    const leaving = player(1, "Leaving", { steamId: "100" });
+    await core.connect(leaving);
+    const first = await core.characters.create(leaving, { name: "Xavier Ex" });
+    const second = await core.characters.create(leaving, { name: "Yara Why" });
+
+    // A double click, then a pick of another character before the first finished loading.
+    const picks = [
+        core.characters.select(leaving, first.id).then((character) => character.id, codeOf),
+        core.characters.select(leaving, first.id).then((character) => character.id, codeOf),
+        core.characters.select(leaving, second.id).then((character) => character.id, codeOf),
+    ];
+    await until(() => g.pending.length === 1, "the load");
+    g.held.clear();
+    g.release();
+    assert.deepStrictEqual(await Promise.all(picks), [first.id, first.id, "HMP_CORE_CHARACTER_LOADING"]);
+    assert.strictEqual(emitted.filter((event) => event.name === "hmp:character:loading").length, 1, "two loads ran for one player");
+
+    // Once the first has loaded, the other can be picked, and the first is unloaded for it.
+    assert.strictEqual((await core.characters.select(leaving, second.id)).id, second.id);
+    await core.disconnect(leaving);
+
+    const back = player(2, "Back", { steamId: "100" });
+    await core.connect(back);
+    assert.strictEqual(await core.characters.select(back, first.id).then(() => "selected", codeOf), "selected", "the first character stayed claimed");
+    assert.strictEqual(await core.characters.select(back, second.id).then(() => "selected", codeOf), "selected", "the second character stayed claimed");
+});
+
+test("checks the claim again after unloading the previous character", async () => {
+    const g = gate();
+    const { core } = setup({ duplicateSession: "allow-group" }, g.onEmit);
+    await core.start();
+    const first = player(1, "First", { steamId: "100" });
+    const second = player(2, "Second", { steamId: "100" });
+    const firstSession = await core.connect(first);
+    assert.ok(firstSession);
+    await core.groups.setAccount(firstSession.account.id, "admin", 1);
+    await core.connect(second);
+    const current = await core.characters.create(first, { name: "Wanda Double" });
+    const wanted = await core.characters.create(first, { name: "Xavier Ex" });
+    await core.characters.select(first, current.id);
+
+    // The first session switches to the wanted character and is still saving the current one...
+    g.held.add("hmp:character:unloading");
+    const switching = core.characters.select(first, wanted.id).then(() => "selected", codeOf);
+    await until(() => g.pending.length === 1, "the first session's unload");
+    g.held.clear();
+    // ...while the second session picks the same character, which is free at that moment.
+    await core.characters.select(second, wanted.id);
+    g.release();
+    const outcome = await switching;
+
+    assert.strictEqual(core.characters.active(second)?.id, wanted.id);
+    assert.notStrictEqual(core.characters.active(first)?.id, wanted.id, "the character is active in both sessions");
+    assert.strictEqual(outcome, "HMP_CORE_CHARACTER_IN_USE");
+});
+
+test("releases an abandoned load's character at a deadline when its handlers never return", async (t) => {
+    const g = gate();
+    g.held.add("hmp:character:loading");
+    const { core, warnings } = setup({}, g.onEmit);
+    await core.start();
+    const leaving = player(1, "Leaving", { steamId: "100" });
+    await core.connect(leaving);
+    const character = await core.characters.create(leaving, { name: "Ominis Gaunt" });
+
+    // A loading handler that waits on the gone client (setLook, waitForRevision) and is never called back.
+    void core.characters.select(leaving, character.id).catch(() => undefined);
+    await until(() => g.pending.length === 1, "the load");
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    await core.disconnect(leaving);
+
+    const back = player(2, "Back", { steamId: "100" });
+    await core.connect(back);
+    g.held.clear();
+    // Until the deadline the abandoned load keeps the character, so two loads of it never run together.
+    assert.strictEqual(await core.characters.select(back, character.id).then(() => "selected", codeOf), "HMP_CORE_CHARACTER_IN_USE");
+    t.mock.timers.tick(29_999);
+    assert.strictEqual(await core.characters.select(back, character.id).then(() => "selected", codeOf), "HMP_CORE_CHARACTER_IN_USE");
+    t.mock.timers.tick(1);
+    assert.strictEqual(await core.characters.select(back, character.id).then(() => "selected", codeOf), "selected");
+    assert.ok(warnings.some((line) => line.includes(`Released character ${character.id}`)), "the release was not logged");
+});
+
+test("connect answers null when the player leaves during an auto-selected load", async () => {
+    const g = gate();
+    const { core } = setup({ autoSelectSingleCharacter: true }, g.onEmit);
+    await core.start();
+    const first = player(1, "First", { steamId: "100" });
+    await core.connect(first);
+    await core.characters.create(first, { name: "Only Child" });
+    await core.disconnect(first);
+
+    g.held.add("hmp:character:loading");
+    const again = player(2, "Again", { steamId: "100" });
+    const connecting = core.connect(again).then((session) => session, codeOf);
+    await until(() => g.pending.length === 1, "the auto-selected load");
+    await core.disconnect(again);
+    g.release();
+    // The host's connect handler logs an error and kicks the player when connect rejects.
+    assert.strictEqual(await connecting, null);
+});
+
+test("leaves a reconnecting player to pick while their last session's load still holds the character", async () => {
+    const g = gate();
+    const { core, warnings } = setup({ autoSelectSingleCharacter: true, duplicateSession: "replace-old" }, g.onEmit);
+    await core.start();
+    const first = player(1, "First", { steamId: "100" });
+    await core.connect(first);
+    const character = await core.characters.create(first, { name: "Only Child" });
+    g.held.add("hmp:character:loading");
+    const abandoned = core.characters.select(first, character.id).then(() => "selected", codeOf);
+    await until(() => g.pending.length === 1, "the load");
+    g.held.clear();
+
+    // The player reconnects while the old load still runs, and the new session replaces the old one.
+    const again = player(2, "Again", { steamId: "100" });
+    assert.ok(await core.connect(again), "the reconnecting player was refused");
+    assert.strictEqual(core.characters.active(again), null);
+    assert.ok(warnings.some((line) => line.includes(`Did not auto-select character ${character.id}`)), "the skipped auto-select was not logged");
+
+    g.release();
+    assert.strictEqual(await abandoned, "HMP_CORE_SESSION_MISSING");
+    assert.strictEqual((await core.characters.select(again, character.id)).id, character.id);
+});
+
+test("raises no hmp:character:selected once the session ended during hmp:character:loaded", async () => {
+    const g = gate();
+    g.held.add("hmp:character:loaded");
+    const { core, emitted } = setup({}, g.onEmit);
+    await core.start();
+    const leaving = player(1, "Leaving", { steamId: "100" });
+    await core.connect(leaving);
+    const character = await core.characters.create(leaving, { name: "Ominis Gaunt" });
+
+    const selecting = core.characters.select(leaving, character.id).then(() => "selected", codeOf);
+    await until(() => g.pending.length === 1, "the loaded handler");
+    await core.disconnect(leaving);
+    const endedAt = emitted.length;
+    g.release();
+    const outcome = await selecting;
+
+    assert.deepStrictEqual(emitted.slice(endedAt).map((event) => event.name), [], "events raised after hmp:session:ended");
+    assert.strictEqual(outcome, "HMP_CORE_SESSION_MISSING");
+});
+
+test("raises each unload event once when the player disconnects during the previous character's unload", async () => {
+    const g = gate();
+    const { core, emitted } = setup({}, g.onEmit);
+    await core.start();
+    const leaving = player(1, "Leaving", { steamId: "100" });
+    await core.connect(leaving);
+    const current = await core.characters.create(leaving, { name: "Wanda Double" });
+    const wanted = await core.characters.create(leaving, { name: "Xavier Ex" });
+    await core.characters.select(leaving, current.id);
+
+    g.held.add("hmp:character:unloading");
+    const switching = core.characters.select(leaving, wanted.id).then(() => "selected", codeOf);
+    await until(() => g.pending.length === 1, "the unload");
+    g.held.clear();
+    await core.disconnect(leaving);
+    g.release();
+    assert.strictEqual(await switching, "HMP_CORE_SESSION_MISSING");
+
+    const count = (name: string) => emitted.filter((event) => event.name === name).length;
+    assert.deepStrictEqual(
+        { unloading: count("hmp:character:unloading"), unloaded: count("hmp:character:unloaded") },
+        { unloading: 1, unloaded: 1 },
+    );
+    const loadedWanted = emitted.some((event) => event.name === "hmp:character:loading" && (event.payload as { character: { id: number } }).character.id === wanted.id);
+    assert.ok(!loadedWanted, "a load began for an ended session");
 });
 
 test("allows duplicate sessions for an account group and keeps characters exclusive", async () => {

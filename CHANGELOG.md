@@ -5,6 +5,28 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Fixed
+
+- `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before
+  the session held the character, so it left the character claimed by the ended session, and every later
+  `characters.select` or `characters.delete` of it was refused with `HMP_CORE_CHARACTER_IN_USE` until the
+  server restarted. `characters.select` now rejects with `HMP_CORE_SESSION_MISSING` instead, and raises no
+  `hmp:character:loaded` or `hmp:character:selected` for the ended session. The character stays claimed
+  until the load's `hmp:character:loading` handlers return, or for 30 seconds after the disconnect if they
+  never do, so a new session never loads it alongside them.
+- `hmp-core` runs one `characters.select` at a time in a session. A select of another character while one
+  is loading rejects with `HMP_CORE_CHARACTER_LOADING`, and a second select of the same character shares the
+  first one's result. Two overlapping selects used to leave the first character claimed after the player
+  disconnected.
+- `characters.select` checks the claim again after unloading the session's previous character, so with
+  `duplicateSession: "allow-group"` two sessions of one account can no longer hold the same character.
+- A disconnect while the previous character unloads raises `hmp:character:unloading` and
+  `hmp:character:unloaded` once each, not twice.
+- With `autoSelectSingleCharacter`, `connect` resolves `null` when the player leaves during the auto-selected
+  load, as it does when they leave before the session is ready. When another session still holds the
+  character, the new session stays open at character selection and a warning is logged; `connect` used to
+  reject, and the server kicked the player.
+
 ## [0.12.0] - 2026-11-12
 
 ### Added
