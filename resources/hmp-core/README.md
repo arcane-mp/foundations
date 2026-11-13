@@ -134,3 +134,10 @@ The resource emits `hmp:session:ready`, `hmp:session:ended`, `hmp:character:crea
 `hmp:character:loading`, `hmp:character:loaded`, `hmp:character:unloading`,
 `hmp:character:unloaded`, `hmp:character:deleted`, `hmp:groups:changed` and
 `hmp:metadata:changed` for other server resources.
+
+A session loads one character at a time. `characters.select` of another character while one is loading
+rejects with `HMP_CORE_CHARACTER_LOADING`; a second select of the same character shares the first one's
+result. If the player disconnects during a select, it rejects with `HMP_CORE_SESSION_MISSING` and raises
+nothing after `hmp:session:ended`. A character whose load was still running keeps its claim until the
+`hmp:character:loading` handlers return, or for at most 30 seconds, so no other session loads it alongside
+them.
