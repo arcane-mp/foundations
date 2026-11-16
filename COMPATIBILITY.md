@@ -10,6 +10,7 @@ target.
 | HogwartsMP scripting host | `1.11` or newer | Supported | Provides the scripting capabilities listed below. |
 | MafiaHub Framework | `16.2.0` or newer | Supported | Required for the `fw://` local resource scheme. On `16.1.x` and older every resource-served page, font, and icon fails to load. |
 | Hogwarts Legacy client data | Steam build ID `20773316` | Supported baseline | The native inventory catalog declares this game-data build. Other builds require revalidation. |
+| Hogwarts Legacy, Epic Games copy | Epic Games account ID | Server side ready | `hmp-core` identifies Epic Games players by the account ID their join announces (`client-epic`). Whether a client runs on an Epic Games copy is up to the HogwartsMP launcher, and its game data needs the same revalidation as any other build. |
 | Dedicated-server JavaScript | Embedded Node.js 22 runtime | Supported | Release resources contain bundled dependencies. |
 | Source build | Node.js 22 or newer and npm | Supported | `npm ci` followed by `npm run verify`. |
 | Database | MySQL 8.x | Supported | `utf8mb4`, UTC, transactional InnoDB tables recommended. |

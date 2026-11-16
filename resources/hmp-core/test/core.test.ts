@@ -5,17 +5,19 @@ import repositoryModule = require("../server/repository");
 import schemaModule = require("../server/schema");
 import configModule = require("../server/config");
 import ticketsModule = require("../server/tickets");
+import announcedModule = require("../server/announced");
 import type { HmpCoreAccount, HmpCoreCharacter, HmpCoreGroup, HmpCorePrincipal } from "../types";
 import type { HmpMySQLMigration } from "../../hmp-mysql/types";
-import type { CoreConfig, Database, Player, Repository, Scope } from "../server/internal";
+import type { AnnouncedIdentities, CoreConfig, Database, Player, Repository, Scope } from "../server/internal";
 
 const { createCore } = coreModule;
 const { createRepository } = repositoryModule;
 const { loadConfig } = configModule;
 const { createTickets, hostAtLeast } = ticketsModule;
+const { createAnnounced } = announcedModule;
 const { migrations } = schemaModule;
 
-interface TestPlayer extends Player { mafiahubId?: string }
+interface TestPlayer extends Player { mafiahubId?: string; epicId?: string }
 interface IdentityLink { accountId: number; trust: string }
 interface OwnedGroup extends HmpCoreGroup { ownerId: number }
 interface RecordedEvent { name: string; payload: unknown }
@@ -106,7 +108,11 @@ function memoryRepository() {
     return repository;
 }
 
-function setup(overrides: Partial<CoreConfig> = {}, onEmit?: (name: string) => Promise<void> | undefined) {
+function setup(
+    overrides: Partial<CoreConfig> = {},
+    onEmit?: (name: string) => Promise<void> | undefined,
+    announcedIdentities?: (player: Player) => AnnouncedIdentities | null,
+) {
     const emitted: RecordedEvent[] = [];
     const warnings: string[] = [];
     const migrated: Array<{ resource: string; list: HmpMySQLMigration[] }> = [];
@@ -129,9 +135,10 @@ function setup(overrides: Partial<CoreConfig> = {}, onEmit?: (name: string) => P
             duplicateSessionGroup: "admin",
             duplicateSessionMinimumGrade: 1,
             kickDuplicateSession: false,
-            identityOrder: ["steamId", "discordId", "hardwareId"],
+            identityOrder: ["steamId", "epicId", "discordId", "hardwareId"],
             ...overrides,
         },
+        announcedIdentities,
     });
     return { core, repository, emitted, migrated, warnings };
 }
@@ -734,5 +741,92 @@ test("turns away a join without an accepted ticket only when required on a host 
     assert.strictEqual(await older.tickets.connecting(join.connection), null);
     assert.deepStrictEqual(join.rejected, []);
     assert.deepStrictEqual(older.warnings, []);
+});
+const EPIC_ID = "0123456789abcdef0123456789abcdef";
+
+test("identifies an Epic Games player by the account ID their join announced", async () => {
+    const joins = new Map<number, AnnouncedIdentities>([[1, { epicId: EPIC_ID.toUpperCase() }]]);
+    const { core, repository } = setup({}, undefined, (candidate) => joins.get(Number(candidate.id)) || null);
+    await core.start();
+    const epic = player(1, "Poppy", { hardwareId: "300" });
+    const session = await core.connect(epic);
+    assert.ok(session);
+    assert.deepStrictEqual(session.principal, { provider: "client-epic", subject: EPIC_ID, trust: "asserted" });
+    assert.deepStrictEqual((await repository.listIdentities(session.account.id)).map((identity) => identity.provider).sort(), ["client-epic", "client-hardware"]);
+});
+
+test("keeps an Epic Games player's account and characters on a new machine", async () => {
+    const { core } = setup();
+    await core.start();
+    const home = player(1, "Poppy", { epicId: EPIC_ID, hardwareId: "300" });
+    const account = (await core.connect(home))?.account;
+    assert.ok(account);
+    const character = await core.characters.create(home, { name: "Poppy Sweeting" });
+    await core.disconnect(home);
+
+    // Known by hardware ID alone, a new machine used to open a new, empty account.
+    const laptop = player(2, "Poppy", { epicId: EPIC_ID, hardwareId: "999" });
+    assert.strictEqual((await core.connect(laptop))?.account.id, account.id);
+    assert.deepStrictEqual((await core.characters.list(laptop)).map((item) => item.id), [character.id]);
+});
+
+test("links an Epic Games account ID to the account a player made before it was read", async () => {
+    const { core, warnings } = setup();
+    await core.start();
+    const before = player(1, "Poppy", { hardwareId: "300" });
+    const account = (await core.connect(before))?.account;
+    assert.ok(account);
+    await core.disconnect(before);
+
+    const after = player(2, "Poppy", { epicId: EPIC_ID, hardwareId: "300" });
+    const session = await core.connect(after);
+    assert.strictEqual(session?.account.id, account.id);
+    assert.deepStrictEqual(session.principal, { provider: "client-epic", subject: EPIC_ID, trust: "asserted" });
+    await core.disconnect(after);
+    assert.strictEqual((await core.connect(player(3, "Poppy", { epicId: EPIC_ID, hardwareId: "555" })))?.account.id, account.id);
+    assert.deepStrictEqual(warnings, []);
+});
+
+test("ignores a malformed Epic Games account ID and one left out of identityOrder", async () => {
+    const malformed = setup();
+    await malformed.core.start();
+    for (const [id, epicId] of [[1, "not-an-epic-id"], [2, "1234"], [3, `${EPIC_ID}0`]] as const) {
+        const session = await malformed.core.connect(player(id, "Poppy", { epicId, hardwareId: `30${id}` }));
+        assert.strictEqual(session?.principal.provider, "client-hardware", epicId);
+    }
+
+    const steamFirst = setup({ identityOrder: ["steamId", "discordId", "hardwareId"] });
+    await steamFirst.core.start();
+    const session = await steamFirst.core.connect(player(1, "Poppy", { epicId: EPIC_ID, hardwareId: "300" }));
+    assert.strictEqual(session?.principal.provider, "client-hardware");
+});
+
+test("loads Epic Games between Steam and Discord in the default identity order", () => {
+    const Hmp = {
+        config: { load: (_path: string, options: { defaults: Record<string, unknown> }) => ({ ...options.defaults }), env: {} },
+    } as unknown as Parameters<typeof loadConfig>[0];
+    assert.deepStrictEqual(loadConfig(Hmp, { env: {} }).identityOrder, ["steamId", "epicId", "discordId", "hardwareId"]);
+    assert.deepStrictEqual(loadConfig(Hmp, { env: { HMP_CORE_IDENTITY_ORDER: "epicId, hardwareId" } }).identityOrder, ["epicId", "hardwareId"]);
+});
+
+test("hands the identifiers a join announced to the player who took its slot", () => {
+    let at = 1_000;
+    const announced = createAnnounced({ now: () => at });
+    const join = { nickname: "Poppy", hardwareId: "300", ip: "198.51.100.2" };
+    assert.strictEqual(announced.remember({ ...join, epicId: "" }), false);
+    assert.strictEqual(announced.remember({ ...join, epicId: ` ${EPIC_ID} ` }), true);
+
+    const other = player(6, "Someone Else", { hardwareId: "300", ip: "198.51.100.2" });
+    assert.strictEqual(announced.attach(other), null);
+    const joined = player(7, "Poppy", { hardwareId: "300", getIP: () => "198.51.100.2" });
+    assert.deepStrictEqual(announced.attach(joined), { epicId: EPIC_ID });
+    assert.deepStrictEqual(announced.get(7), { epicId: EPIC_ID });
+    assert.strictEqual(announced.attach(player(8, "Poppy", { hardwareId: "300", ip: "198.51.100.2" })), null, "one join, one slot");
+    assert.strictEqual(announced.detach(joined), true);
+    assert.strictEqual(announced.get(7), null);
+
+    announced.remember({ ...join, epicId: EPIC_ID });
+    at += 15 * 60_000;
+    assert.strictEqual(announced.attach(player(9, "Poppy", { hardwareId: "300", ip: "198.51.100.2" })), null, "a stale join expires");
 });
 // Source-level TypeScript tests.

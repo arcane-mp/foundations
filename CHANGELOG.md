@@ -5,6 +5,18 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Added
+
+- `hmp-core` identifies Epic Games players by their Epic Games account ID, as `client-epic`. The host
+  announces it with the join (`playerConnecting`) but not on the player object, so `hmp-core` used to know
+  an Epic Games player only by hardware ID, and the same player on another machine opened a new, empty
+  account. The ID is now remembered from the join until the player with its nickname, hardware ID and IP
+  takes the slot, read from the player object on a host that carries it, and linked like the other client
+  identifiers: an account first made from a player's hardware ID gains it on their next join. It must be
+  32 hexadecimal digits and is stored lowercase. The default `identityOrder` is
+  `["steamId", "epicId", "discordId", "hardwareId"]`; a server whose `data/hmp-core.json` or
+  `HMP_CORE_IDENTITY_ORDER` names its own order adds `epicId` to it to use the ID.
+
 ### Fixed
 
 - `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before

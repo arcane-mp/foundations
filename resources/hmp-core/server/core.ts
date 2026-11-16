@@ -12,9 +12,19 @@ import type { CoreConfig, CoreOptions, Player, ProviderEntry, Scope } from "./in
 
 const IDENTITY_FIELDS: Readonly<Record<string, string>> = Object.freeze({
     steamId: "client-steam",
+    epicId: "client-epic",
     discordId: "client-discord",
     hardwareId: "client-hardware",
 });
+// Steam, Discord and hardware IDs are decimal. An Epic Games account ID is 32 hexadecimal digits, kept lowercase.
+const DECIMAL_ID = /^\d+$/;
+const EPIC_ACCOUNT_ID = /^[0-9a-f]{32}$/;
+
+function identitySubject(field: string, value: unknown): string | null {
+    const subject = String(value ?? "").trim();
+    if (field === "epicId") return EPIC_ACCOUNT_ID.test(subject.toLowerCase()) ? subject.toLowerCase() : null;
+    return DECIMAL_ID.test(subject) ? subject : null;
+}
 const CLIENT_PROVIDER = "hmp-client-identity";
 // A load whose player disconnected keeps the character claimed until its loading handlers return, so a new
 // session cannot load it alongside them. This bounds a handler that never returns.
@@ -70,6 +80,7 @@ function createCore(options: CoreOptions) {
     const listPlayers = options.listPlayers || (() => []);
     const logger = options.logger || console;
     const config = options.config || {};
+    const announcedIdentities = options.announcedIdentities || (() => null);
     if (!repository || !database) throw new TypeError("repository and database are required");
 
     let state: HmpCoreStatus["state"] = "starting";
@@ -154,10 +165,13 @@ function createCore(options: CoreOptions) {
 
     function clientIdentities(player: Player): HmpCorePrincipal[] {
         const identities: HmpCorePrincipal[] = [];
+        const announced = (announcedIdentities(player) || {}) as Readonly<Record<string, string | undefined>>;
         for (const field of config.identityOrder || Object.keys(IDENTITY_FIELDS)) {
             const provider = IDENTITY_FIELDS[field];
-            const subject = String((player as unknown as Record<string, unknown>)[field] ?? "").trim();
-            if (provider && /^\d+$/.test(subject)) identities.push({ provider, subject, trust: "asserted" });
+            // The player object's own field wins; a host that does not carry it still announced it with the join.
+            const own = (player as unknown as Record<string, unknown>)[field];
+            const subject = identitySubject(field, String(own ?? "").trim() ? own : announced[field]);
+            if (provider && subject) identities.push({ provider, subject, trust: "asserted" });
         }
         return identities;
     }
