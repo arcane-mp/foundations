@@ -1,6 +1,7 @@
 import type { HmpActivities, HmpActivityInvitation, HmpActivitySession } from "../../hmp-activities/types";
 import type { HmpPvp, HmpPvpHit } from "../../hmp-pvp/types";
 import type { HmpDuelChallenge, HmpDuelPlayer, HmpDuels } from "../types";
+import type { MatchDraft, MatchSide } from "./internal";
 
 interface GearRules { multiplier: number; traits: boolean }
 
@@ -31,6 +32,10 @@ interface Dependencies<P extends HmpDuelPlayer> {
     setTimer?: (handler: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
     warn?(message: string): void;
+    /** The character a duelist plays, captured as the duel begins; null without one. */
+    character?(playerId: number): { id: number; name: string } | null;
+    /** A duel that began has a winner; called once, after the duel's own teardown. */
+    finished?(draft: MatchDraft): void;
 }
 
 // A live duel is a pair override: lock-on and a kneel finish, whatever the server's own rules say.
@@ -55,6 +60,8 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
     const unschedule = dependencies.clearTimer || clearTimeout;
     const startedAt = now();
     const active = new Map<number, { opponentId: number; sessionId: string }>();
+    // Each began duel's two duelists, by session, for the result the ranking records.
+    const sides = new Map<string, MatchSide[]>();
     const live = new Set<string>();
     const ending = new Set<string>();
     const countdowns = new Map<string, ReturnType<typeof setTimeout>>();
@@ -116,6 +123,13 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
         const loserId = Number(result?.loserId) || 0;
         // A knock-out's kneel ends by itself, unless the server's rules hold kneels: then the duel stands its loser up.
         if (result?.reason === "ko" && loserId && dependencies.kneelHeld?.()) standUp(loserId);
+        const duelists = sides.get(session.id) || [];
+        sides.delete(session.id);
+        const winner = duelists.find((entry) => entry.playerId === winnerId), loser = duelists.find((entry) => entry.playerId === loserId);
+        if (winner && loser && winner !== loser && dependencies.finished) {
+            try { dependencies.finished({ reference: session.id, winner, loser, reason: String(result?.reason || reason) }); }
+            catch (error) { dependencies.warn?.(`Could not report duel '${session.id}': ${error instanceof Error ? error.message : String(error)}`); }
+        }
         for (const participant of session.participants) {
             const outcome = winnerId === participant.playerId ? "win" : loserId === participant.playerId ? "lose" : "cancelled";
             const opponent = session.participants.find((entry) => entry.playerId !== participant.playerId);
@@ -159,6 +173,13 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
         if (!dependencies.pair(left.playerId, right.playerId, COUNTDOWN)) throw new Error("The server has no room for another duel right now");
         active.set(left.playerId, { opponentId: right.playerId, sessionId: session.id });
         active.set(right.playerId, { opponentId: left.playerId, sessionId: session.id });
+        const captured = [left, right].map((participant) => {
+            const character = dependencies.character?.(participant.playerId);
+            return character && Number.isSafeInteger(character.id) && character.id > 0
+                ? { playerId: participant.playerId, characterId: character.id, name: character.name || participant.nickname }
+                : null;
+        });
+        if (captured[0] && captured[1]) sides.set(session.id, captured as MatchSide[]);
         dependencies.setRecovery(left.playerId, false);
         dependencies.setRecovery(right.playerId, false);
         makeGearCosmetic(left.playerId); makeGearCosmetic(right.playerId);
@@ -252,7 +273,7 @@ function createDuelService<P extends HmpDuelPlayer>(dependencies: Dependencies<P
         // Gear counts again now, not after the sessions' teardown, which waits its turn in hmp-activities.
         for (const id of [...gear.keys()]) restoreGear(id);
         for (const id of [...dodgeHeld]) releaseDodge(id);
-        await disposeDefinition(); active.clear(); live.clear(); ending.clear();
+        await disposeDefinition(); active.clear(); live.clear(); ending.clear(); sides.clear();
     }
 
     return Object.freeze({ challenge, accept: (player: P) => answer(player, true), decline: (player: P, reason?: string) => answer(player, false, reason), cancel, forfeit, status: () => ({ state, pending: activities.invitations.list().filter((entry) => entry.activityId === "duel:standard").length, countdowns: countdowns.size, live: live.size, uptimeMs: now() - startedAt }), defeated, expired, died, disconnected, stop });
