@@ -5,6 +5,19 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Added
+
+- The `hmp-racing` gamemode: broom races through checkpoint courses. A host opens a race lobby with
+  `/race host <track>`, others `/race join`, and `/race start` puts everyone on a grid, holds them through
+  a countdown, and turns their fast travel off until the race ends. The server samples every racer's
+  position and judges each gate along the path between samples, lap by lap, so no client reports its own
+  progress. A racer who covers more ground than `maxSpeedCmPerSecond` between samples is disqualified as a
+  teleport. The first finisher starts a grace period for the rest. Racers see their next gates as shapes
+  and a HUD with place, lap, gate and time. Editors build tracks in game by flying them
+  (`/race edit new`, `point`, `save`), stored in `hmp-worldstate` one key per gate, or list them in
+  `data/hmp-racing.json`. Track records and per-character bests are kept, `/race top` shows them, and
+  every race raises `hmp-racing:finished` with its results.
+
 ### Fixed
 
 - `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before

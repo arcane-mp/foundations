@@ -1,0 +1,32 @@
+{
+  "name": "hmp-racing",
+  "version": "0.12.0",
+  "private": true,
+  "author": "HogwartsMP",
+  "description": "Broom races through server-checked checkpoint courses, authored in game, with track records, built on HMP Foundations.",
+  "license": "SEE LICENSE IN LICENSE",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "tsx test/race.test.ts && tsx test/service.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "smoke": "node test/bundle.test.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  },
+  "mafiahub": {
+    "serverScripts": ["dist/server.js"],
+    "clientScripts": ["dist/client.js"],
+    "files": ["dist/client.js", "dist/hud.html"],
+    "resourceDependencies": [
+      { "name": "hmp-lib", "version": "0.12.0" },
+      { "name": "hmp-core", "version": "0.12.0" },
+      { "name": "hmp-activities", "version": "0.12.0" },
+      { "name": "hmp-worldstate", "version": "0.12.0" }
+    ],
+    "errorBehavior": "stop",
+    "priority": -300
+  }
+}
