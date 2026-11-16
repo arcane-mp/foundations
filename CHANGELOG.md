@@ -5,6 +5,20 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Added
+
+- The `hmp-expeditions` gamemode: cooperative expeditions. A party (`/expedition host <id>`, `join`,
+  `start`) gathers at an expedition's entrance and fights through its stages in order. Each stage spawns a
+  pack of native enemies through `hmp-npcs`, and the last can hold a boss. Packs grow and bosses toughen
+  for every fighter past the first, and enemy ownership rotates across the party. Each fighter sees the
+  current fight as a ground ring and a HUD with stage, foes and time left. Clearing the last stage pays
+  every fighter who stayed the course `experience` through `hmp-progression` and keeps the fastest clear
+  as the server record. A wipe or the time limit fails the run, and whatever enemies remain are removed.
+  With `instanced: true`, each run takes a virtual world of its own, and falls back to the shared world
+  on a host that keeps players where they are. Editors build expeditions in game (`/expedition edit new`,
+  `stage <enemy> [xN]... [boss <enemy> [health]]`, `save`), stored in `hmp-worldstate` one key per stage,
+  or list them in `data/hmp-expeditions.json`. Every run raises `hmp-expeditions:finished`.
+
 ### Fixed
 
 - `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before

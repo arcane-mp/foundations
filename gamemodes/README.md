@@ -7,6 +7,7 @@ Each one lives in `resources/` here and has a row below.
 
 | Gamemode | Description |
 |---|---|
+| [`hmp-expeditions`](resources/hmp-expeditions) | Cooperative expeditions: a party fights through stages of native enemies to a final boss, optionally in its own virtual world, for experience and clear-time records. Built in game. Built on activities, NPCs, progression, worldstate and core. |
 | [`hmp-gauntlet`](resources/hmp-gauntlet) | Cooperative wave survival: a party fights randomized, escalating waves of native enemies for ranked leaderboards. Built on activities, NPCs, interactions and worldstate. |
 | [`hmp-quidditch`](resources/hmp-quidditch) | Quidditch on the Hogwarts pitch: called matches with house lineups, practice and Snitch hunts. Built on activities, houses, UI, input, inventory, audio, blips and world policy. |
 
