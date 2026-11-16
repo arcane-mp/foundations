@@ -5,6 +5,17 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Added
+
+- `hmp-duels` ranks duelists. Every duel that began and has a winner is recorded against both duelists'
+  characters, captured as the countdown starts, in `hmp_duel_matches`; a knock-out, a forfeit or a
+  disconnect also moves an Elo rating in `hmp_duel_ratings` (1000 to start, K 48 for a character's first
+  ten duels and 32 after, never below 100). A pair that duels more than three rated times in an hour plays
+  the rest unrated, so two players cannot farm each other's rating. Both duelists see their new rating,
+  and the server raises `hmp:duels:rated`. `/duel rank [player]`, `/duel top` and `/duel history [player]`
+  read it in chat, and the new `ranking` export reads it for other resources. `ranking` in
+  `data/hmp-duels.json` sets every value or turns the ranking off. `hmp-duels` now depends on `hmp-mysql`.
+
 ### Fixed
 
 - `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before

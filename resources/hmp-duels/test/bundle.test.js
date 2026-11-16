@@ -18,8 +18,10 @@ const activity = {
 };
 const pvp = { policy: { register: () => () => true }, status: () => ({}) };
 const ui = { notify() {}, alert: async () => null, close() {} };
+const migrated = [];
+const database = { transaction: async () => { throw new Error("unused"); }, migrate: async (resource, list) => { migrated.push([resource, list.length]); return {}; } };
 global.Exports = { register: (name, value) => serverExports.set(name, value) };
-global.Imports = { get: (name) => name === "hmp-lib" ? { logger: { create: () => ({ info() {}, warn() {}, error() {} }) }, config: { load: (_p, o) => { defaults = o.defaults; return { ...o.defaults, cosmeticGear: true, dodge: false }; } }, player: { find: () => null } } : name === "hmp-core" ? {} : name === "hmp-activities" ? activity : name === "hmp-pvp" ? pvp : ui };
+global.Imports = { get: (name) => name === "hmp-lib" ? { logger: { create: () => ({ info() {}, warn() {}, error() {} }) }, config: { load: (_p, o) => { defaults = o.defaults; return { ...o.defaults, cosmeticGear: true, dodge: false }; } }, player: { find: () => null } } : name === "hmp-core" ? {} : name === "hmp-mysql" ? database : name === "hmp-activities" ? activity : name === "hmp-pvp" ? pvp : ui };
 global.PlayerManager = { getById: (id) => id === 2 ? rival : player };
 global.Events = { on: (name, handler) => serverHandlers.set(name, handler) };
 global.Pvp = { getRules: () => rules };
@@ -27,7 +29,10 @@ const realSetTimeout = global.setTimeout;
 global.setTimeout = (handler, ms) => { timers.push({ handler, ms }); return timers.length; };
 require(path.resolve(__dirname, "..", "dist", "server.js"));
 global.setTimeout = realSetTimeout;
-assert.deepStrictEqual([...serverExports.keys()], ["challenge", "accept", "decline", "cancel", "forfeit", "status"]);
+assert.deepStrictEqual([...serverExports.keys()], ["challenge", "accept", "decline", "cancel", "forfeit", "status", "ranking"]);
+assert.strictEqual(serverExports.get("ranking").config().initialRating, 1000);
+// The ranking migrates its own tables when the resource starts.
+serverHandlers.get("resourceStart")("hmp-duels");
 assert.ok(serverHandlers.has("playerDied")); assert.ok(serverHandlers.has("pvpDefeat")); assert.ok(serverHandlers.has("hmp:activities:invitation:expired"));
 // A knock-out's loser is stood up with endKneel only when the host's rules hold kneels; an older host's have no kneelSeconds.
 const ko = { session: { id: "s", participants: [{ playerId: 1, nickname: "Smoke" }, { playerId: 2, nickname: "Rival" }] }, result: { winnerId: 2, loserId: 1, reason: "ko" } };

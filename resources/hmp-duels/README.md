@@ -44,7 +44,68 @@ Commands (a player id takes a `#`, as in `/duel #5`):
 /duel cancel
 /duel forfeit
 /duel status
+/duel rank [#playerId|nickname]
+/duel top
+/duel history [#playerId|nickname]
 ```
+
+## Ranking
+
+Every duel that began and has a winner is recorded against both duelists' characters, and the ones that
+end the configured ways move an Elo rating. The characters are captured as the countdown starts, so a
+duelist who leaves or switches character mid-duel still answers for that duel. Ratings live in
+`hmp_duel_ratings` and every recorded duel in `hmp_duel_matches`, both created by `hmp-duels`'s own
+migration; deleting a character deletes its rating and keeps its opponents' history.
+
+- A character starts at `initialRating` (1000). Even ratings move by half of K; an upset moves more than
+  an expected win, a win always gains at least one point, and no loss takes a rating below `floor`.
+- During a character's first `provisionalMatches` duels it moves by `provisionalKFactor` (48), then by
+  `kFactor` (32). Each side uses its own K.
+- Only the endings in `ratedReasons` count: a knock-out, a forfeit or a disconnect by default. A duel
+  that ends another way (`died`, unless listed) is kept in the history, unrated.
+- Two characters who duel each other more than `repeatLimit` rated times within `repeatWindowMinutes`
+  play the rest unrated, so a pair cannot farm each other's rating. `repeatLimit: 0` turns this off.
+- A character takes a rank after `minimumMatches` rated duels; ties share a rank.
+- A duelist without a loaded character fights as before, and the duel is not recorded.
+
+After each recorded duel both duelists see their new rating (or why it was unrated), and the server raises
+`hmp:duels:rated` with the match, both player ids and the reason it was left unrated, if it was:
+
+```js
+Events.on("hmp:duels:rated", ({ match, winnerPlayerId, unrated }) => { /* ... */ });
+```
+
+The `ranking` export reads the same data for other resources:
+
+```js
+const ranking = Imports.get("hmp-duels").ranking;
+await ranking.standing(characterId); // { rating, wins, losses, streak, bestStreak, rank, ... }
+await ranking.leaderboard(10);
+await ranking.history(characterId, 5);
+```
+
+`ranking` in `data/hmp-duels.json` (all optional):
+
+```json
+{
+  "ranking": {
+    "enabled": true,
+    "initialRating": 1000,
+    "kFactor": 32,
+    "provisionalKFactor": 48,
+    "provisionalMatches": 10,
+    "floor": 100,
+    "ratedReasons": ["ko", "forfeit", "disconnect"],
+    "repeatLimit": 3,
+    "repeatWindowMinutes": 60,
+    "leaderboardSize": 10,
+    "minimumMatches": 1
+  }
+}
+```
+
+`enabled: false` records nothing, creates no tables and answers the ranking commands with an error. A
+value out of range stops the resource at startup, as `hmp-duels`'s other settings do.
 
 Challenge consent uses `hmp-ui`, whose bundled Arcanum renderer remains the default and whose external
 renderer contract lets server owners replace the presentation. Input focus and control ownership are
