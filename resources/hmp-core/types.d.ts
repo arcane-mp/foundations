@@ -4,6 +4,8 @@ export interface HmpCorePlayer {
     id: number;
     nickname?: string;
     steamId?: string;
+    /** An Epic Games account ID; hosts that do not carry it on the player announce it with the join instead. */
+    epicId?: string;
     discordId?: string;
     hardwareId?: string;
     kick?(reason?: string): void;
