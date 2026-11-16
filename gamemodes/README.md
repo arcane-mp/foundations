@@ -8,6 +8,7 @@ Each one lives in `resources/` here and has a row below.
 | Gamemode | Description |
 |---|---|
 | [`hmp-gauntlet`](resources/hmp-gauntlet) | Cooperative wave survival: a party fights randomized, escalating waves of native enemies for ranked leaderboards. Built on activities, NPCs, interactions and worldstate. |
+| [`hmp-housewars`](resources/hmp-housewars) | House battles: houses fight best-of elimination rounds in an arena, non-lethal, for House Cup points. Built on activities, houses, PvP and core. |
 | [`hmp-quidditch`](resources/hmp-quidditch) | Quidditch on the Hogwarts pitch: called matches with house lineups, practice and Snitch hunts. Built on activities, houses, UI, input, inventory, audio, blips and world policy. |
 
 ## Versioning

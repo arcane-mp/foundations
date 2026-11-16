@@ -36,6 +36,7 @@ COPY resources/hmp-loot/package.json resources/hmp-loot/package.json
 COPY resources/hmp-beasts/package.json resources/hmp-beasts/package.json
 COPY resources/hmp-express/package.json resources/hmp-express/package.json
 COPY gamemodes/resources/hmp-gauntlet/package.json gamemodes/resources/hmp-gauntlet/package.json
+COPY gamemodes/resources/hmp-housewars/package.json gamemodes/resources/hmp-housewars/package.json
 COPY gamemodes/resources/hmp-quidditch/package.json gamemodes/resources/hmp-quidditch/package.json
 RUN npm ci
 
