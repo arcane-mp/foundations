@@ -5,6 +5,18 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Added
+
+- The `hmp-housewars` gamemode: houses fight each other for the House Cup. Players join a battle lobby as
+  their character's house (`/housewars host [arena]`, `join`, `start`), and the houses fight
+  best-of-`rounds` elimination rounds in an arena, a configured one or open ground around the host. Each
+  round puts every house in its own corner through a countdown. Fighters of different houses are then
+  hostile to each other through host pair overrides, with lock-on and a kneel finish, while housemates
+  never are, and an `hmp-pvp` rule keeps every hit non-lethal. Everyone is held inside the arena until the
+  round ends. A round goes to the last house standing, or to the one with the most fighters up when time
+  runs out. The winning house earns `housePoints.win` and every house that fought
+  `housePoints.participation` through the `hmp-houses` ledger. Every match raises `hmp-housewars:finished`.
+
 ### Fixed
 
 - `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before

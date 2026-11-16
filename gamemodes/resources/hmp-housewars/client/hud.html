@@ -1,0 +1,79 @@
+<!doctype html>
+<!--
+  hmp-housewars HUD, driven by dist/client.js:
+    native -> page : Web.emit(view, "hud:update", HudState)  (see shared/types.ts)
+    page -> native : callEvent("ready", "{}")
+-->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+      -webkit-user-select: none; user-select: none; }
+    #hud {
+      position: fixed; top: 16px; left: 50%; transform: translate(-50%, -4px);
+      background: rgba(16, 13, 8, 0.62);
+      border: 1px solid rgba(201, 162, 90, 0.35); border-radius: 6px;
+      padding: 8px 14px 9px; color: #d5c8a9; text-align: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.40); backdrop-filter: blur(2px);
+      opacity: 0; transition: opacity .25s ease, transform .25s ease;
+    }
+    #hud.show { opacity: 1; transform: translate(-50%, 0); }
+    #hud .title { font-family: 'Cinzel', Georgia, serif; font-size: 10px; letter-spacing: .16em;
+      text-transform: uppercase; color: #c19a4e; }
+    #hud .houses { display: flex; gap: 16px; margin-top: 6px; justify-content: center; }
+    #hud .house { min-width: 64px; border-top: 3px solid var(--crest); padding-top: 4px; }
+    #hud .house.mine .name { text-decoration: underline; }
+    #hud .name { font-family: Georgia, serif; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: #9c8f74; }
+    #hud .wins { font-family: 'Cinzel', Georgia, serif; font-size: 22px; color: #f0e3c2; line-height: 1.1; }
+    #hud .left { font-family: Consolas, 'Courier New', monospace; font-size: 11px; color: #c9bb98; }
+    #hud .foot { margin-top: 6px; font-family: Consolas, 'Courier New', monospace; font-size: 12px; color: #f0e3c2; }
+    #hud .foot.down { color: #d98a7a; }
+    .gryffindor { --crest: #ae0001; } .hufflepuff { --crest: #ecb939; }
+    .ravenclaw { --crest: #3c5ca8; } .slytherin { --crest: #2a7d46; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="title" id="title">House battle</div>
+    <div class="houses" id="houses"></div>
+    <div class="foot" id="foot"></div>
+  </div>
+  <script>
+    var hud = document.getElementById('hud');
+    var NAMES = { gryffindor: 'Gryffindor', hufflepuff: 'Hufflepuff', ravenclaw: 'Ravenclaw', slytherin: 'Slytherin' };
+    var state = null, received = 0, timer = null;
+    function clock() {
+      if (!state) return;
+      var left = Math.max(0, state.remainingMs - (Date.now() - received));
+      var seconds = Math.ceil(left / 1000);
+      var time = left ? Math.floor(seconds / 60) + ':' + ('0' + seconds % 60).slice(-2) : '';
+      var phase = { lobby: 'Waiting', countdown: 'Get ready', fighting: 'Fight', intermission: 'Next round', over: 'Over' }[state.phase];
+      var foot = document.getElementById('foot');
+      foot.textContent = phase + (time ? ' · ' + time : '') + (state.phase === 'fighting' && !state.standing ? ' · you are down' : '');
+      foot.className = 'foot' + (state.phase === 'fighting' && !state.standing ? ' down' : '');
+    }
+    function render(data) {
+      if (!data || !data.active) { state = null; hud.classList.remove('show'); if (timer) { clearInterval(timer); timer = null; } return; }
+      state = data; received = Date.now();
+      document.getElementById('title').textContent = data.arena + (data.round ? ' · round ' + data.round + ' of ' + data.rounds : '');
+      var houses = document.getElementById('houses');
+      houses.innerHTML = '';
+      data.houses.forEach(function (entry) {
+        var cell = document.createElement('div');
+        cell.className = 'house ' + entry.house + (entry.house === data.house ? ' mine' : '');
+        var name = document.createElement('div'); name.className = 'name'; name.textContent = NAMES[entry.house] || entry.house;
+        var wins = document.createElement('div'); wins.className = 'wins'; wins.textContent = String(entry.wins);
+        var left = document.createElement('div'); left.className = 'left'; left.textContent = entry.standing + '/' + entry.fighters + ' up';
+        cell.appendChild(name); cell.appendChild(wins); cell.appendChild(left);
+        houses.appendChild(cell);
+      });
+      clock();
+      if (!timer) timer = setInterval(clock, 250);
+      hud.classList.add('show');
+    }
+    window.addEventListener('hud:update', function (event) { render(event.detail); });
+    if (typeof callEvent === 'function') callEvent('ready', '{}');
+  </script>
+</body>
+</html>
