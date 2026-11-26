@@ -4,79 +4,109 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>HMP UI</title>
+  <link rel="stylesheet" href="arcanum/tokens.css" />
   <style>
-    @font-face { font-family:"Cinzel"; src:url("fonts/Cinzel-Variable.ttf") format("truetype"); font-display:swap; }
-    @font-face { font-family:"Spectral"; src:url("fonts/Spectral-Regular.ttf") format("truetype"); font-display:swap; }
-    :root { color-scheme:dark; --bg:#0a0805; --window:#15120c; --panel:#100d08; --well:#0e0b07; --card:#16120b; --gold:#c9a25a; --bright:#d8b56b; --heading:#f0e3c2; --ink:#d5c8a9; --data:#c2b291; --muted:#9c8f74; --faint:#6f6553; --line:rgba(201,162,90,.30); --hair:rgba(201,162,90,.14); --blue:#92b6c0; --green:#a3bd82; --amber:#d4ad68; --red:#d2876e; --cinzel:"Cinzel",Georgia,serif; --spectral:"Spectral",Georgia,serif; --mono:ui-monospace,"Cascadia Code",Consolas,monospace; }
     * { box-sizing:border-box; }
-    * { scrollbar-width:thin; scrollbar-color:rgba(201,162,90,.30) transparent; }
-    ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-track { background:rgba(0,0,0,.22); border-radius:5px; } ::-webkit-scrollbar-thumb { background:rgba(201,162,90,.30); border:2px solid transparent; background-clip:padding-box; border-radius:5px; } ::-webkit-scrollbar-thumb:hover { background:rgba(201,162,90,.55); background-clip:padding-box; }
-    html,body { width:100%; height:100%; margin:0; overflow:hidden; background:transparent; color:var(--ink); font-family:var(--spectral); pointer-events:none; }
+    * { scrollbar-width:thin; scrollbar-color:var(--arc-line-strong) transparent; }
+    ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-track { background:rgba(0,0,0,.22); border-radius:5px; } ::-webkit-scrollbar-thumb { background:var(--arc-line-strong); border:2px solid transparent; background-clip:padding-box; border-radius:5px; } ::-webkit-scrollbar-thumb:hover { background:rgba(201,162,90,.55); background-clip:padding-box; }
+    html,body { width:100%; height:100%; margin:0; overflow:hidden; background:transparent; color:var(--arc-text-body); font-family:var(--arc-font-body); font-size:var(--arc-text-md); pointer-events:none; }
     button,input,textarea { font:inherit; }
-    #toasts { position:fixed; top:24px; right:24px; width:min(380px,calc(100vw - 48px)); display:grid; gap:10px; z-index:20; }
-    .toast { pointer-events:none; position:relative; padding:14px 16px 14px 18px; border:1px solid var(--line); border-radius:5px; background:linear-gradient(145deg,rgba(21,18,12,.98),rgba(10,8,5,.98)); box-shadow:0 18px 48px rgba(0,0,0,.5); animation:arrive .2s ease-out; overflow:hidden; }
-    .toast::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--blue); }
-    .toast.success::before { background:var(--green); }.toast.warning::before{background:var(--amber)}.toast.error::before{background:var(--red)}
-    .toast strong { display:block; margin-bottom:4px; color:var(--heading); font-family:var(--cinzel); font-size:12px; letter-spacing:.08em; }.toast p{margin:0;color:var(--ink);line-height:1.45}
-    .toast.leave { animation:leave .18s ease-in forwards; }
+    .sr-only { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+    #toasts { position:fixed; top:var(--arc-space-6); right:var(--arc-space-6); width:min(380px,calc(100vw - 48px)); display:grid; gap:var(--arc-space-2); z-index:20; }
+    .toast { pointer-events:none; display:grid; grid-template-columns:18px minmax(0,1fr); gap:var(--arc-space-3); padding:var(--arc-space-3) var(--arc-space-4); border:1px solid var(--arc-line-strong); border-radius:var(--arc-radius-md); background:linear-gradient(145deg,rgba(21,18,12,.98),rgba(10,8,5,.98)); box-shadow:var(--arc-shadow-raised); animation:arrive var(--arc-duration-slow) var(--arc-ease-out); }
+    .toast svg { width:18px; height:18px; margin-top:1px; color:var(--tone); }
+    .toast.inform { --tone:var(--arc-info); } .toast.success { --tone:var(--arc-success); } .toast.warning { --tone:var(--arc-warning); } .toast.error { --tone:var(--arc-danger); }
+    .toast strong { display:block; margin-bottom:2px; color:var(--tone); font-family:var(--arc-font-display); font-size:var(--arc-text-sm); font-weight:600; letter-spacing:var(--arc-tracking-caps); }
+    .toast p { margin:0; color:var(--arc-text-body); line-height:1.45; overflow-wrap:anywhere; }
+    .toast.leave { animation:leave var(--arc-duration-exit) var(--arc-ease-in) forwards; }
     #overlay { position:fixed; inset:0; display:none; place-items:center; padding:28px; background:radial-gradient(900px 600px at 50% 22%,rgba(201,162,90,.06),transparent 60%),rgba(4,3,2,.68); z-index:10; pointer-events:auto; }
     #overlay.open { display:grid; }
     #overlay.transitioning .panel { visibility:hidden; }
-    .panel { width:min(560px,calc(100vw - 40px)); max-height:min(760px,calc(100vh - 48px)); overflow:auto; padding:26px 30px; border:1px solid var(--hair); border-radius:6px; background:var(--window); box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 1px rgba(201,162,90,.08); }
-    .eyebrow { display:flex; align-items:center; gap:10px; color:#b89a64; font-family:var(--cinzel); text-transform:uppercase; letter-spacing:.32em; font-size:10px; margin-bottom:7px; }
-    .eyebrow::before { content:""; width:8px; height:8px; flex:none; background:var(--bright); transform:rotate(45deg); }
-    h1 { margin:0; color:var(--heading); font-family:var(--cinzel); font-size:24px; font-weight:600; letter-spacing:.06em; line-height:1.25; }
-    .content { margin:12px 0 0; color:#bcae93; line-height:1.6; white-space:pre-wrap; }
-    .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:22px; }
-    button { cursor:pointer; min-height:38px; padding:9px 15px; color:var(--data); border:1px solid rgba(201,162,90,.25); border-radius:4px; background:transparent; font-family:var(--cinzel); font-size:12px; letter-spacing:.10em; }
-    button:hover:not(:disabled),button:focus-visible { border-color:rgba(201,162,90,.5); outline:none; background:rgba(201,162,90,.08); color:var(--heading); }
-    button.primary { color:#1a1306; border-color:var(--gold); background:linear-gradient(180deg,#dcb96e,#c19a4e); box-shadow:0 6px 18px rgba(201,162,90,.22); font-weight:600; }
-    button.danger { border-color:rgba(165,75,65,.5); color:var(--red); }
-    button:disabled { cursor:not-allowed; opacity:.45; }
-    .fields { display:grid; gap:15px; margin-top:18px; }
-    label.field { display:grid; gap:7px; color:var(--data); font-family:var(--cinzel); font-size:13px; letter-spacing:.07em; }
-    .hint { color:var(--muted); font-family:var(--spectral); font-size:12px; letter-spacing:0; line-height:1.4; }
-    input,textarea { width:100%; color:var(--ink); border:1px solid rgba(201,162,90,.18); border-radius:4px; background:var(--well); padding:10px 12px; outline:none; font-family:var(--spectral); letter-spacing:0; }
-    input::placeholder,textarea::placeholder { color:var(--faint); }
-    input:focus,textarea:focus { border-color:rgba(201,162,90,.42); box-shadow:0 0 0 2px rgba(201,162,90,.08); }
+    .panel { width:min(560px,calc(100vw - 40px)); max-height:min(760px,calc(100vh - 48px)); overflow:auto; padding:var(--arc-space-6) var(--arc-space-8); border:1px solid var(--arc-line); border-radius:var(--arc-radius-lg); background:var(--arc-surface-window); box-shadow:var(--arc-shadow-window); }
+    .eyebrow { display:flex; align-items:center; gap:var(--arc-space-2); color:var(--arc-gold-500); font-family:var(--arc-font-display); text-transform:uppercase; letter-spacing:.2em; font-size:var(--arc-text-xs); margin-bottom:var(--arc-space-1); }
+    .eyebrow::before { content:""; width:7px; height:7px; flex:none; background:var(--arc-gold-400); transform:rotate(45deg); }
+    h1 { margin:0; color:var(--arc-text-heading); font-family:var(--arc-font-display); font-size:var(--arc-text-xl); font-weight:600; letter-spacing:.05em; line-height:var(--arc-leading-tight); }
+    .content { margin:var(--arc-space-3) 0 0; color:var(--arc-text-body); line-height:var(--arc-leading-body); white-space:pre-wrap; }
+    .actions { display:flex; justify-content:flex-end; gap:var(--arc-space-3); margin-top:var(--arc-space-6); }
+    button { cursor:pointer; min-height:40px; padding:0 var(--arc-space-4); color:var(--arc-text-data); border:1px solid var(--arc-line-strong); border-radius:var(--arc-radius-md); background:transparent; font-family:var(--arc-font-display); font-size:var(--arc-text-sm); letter-spacing:var(--arc-tracking-caps); transition:background-color var(--arc-duration-base) var(--arc-ease-out),border-color var(--arc-duration-base) var(--arc-ease-out),color var(--arc-duration-base) var(--arc-ease-out); }
+    button:hover:not(:disabled) { border-color:rgba(201,162,90,.5); background:rgba(201,162,90,.08); color:var(--arc-text-heading); }
+    button:active:not(:disabled) { background:rgba(201,162,90,.14); }
+    button:focus { outline:none; }
+    button:focus-visible { box-shadow:var(--arc-focus-ring); }
+    button.primary { color:var(--arc-on-gold); border-color:var(--arc-gold-500); background:linear-gradient(180deg,var(--arc-gold-400),var(--arc-gold-600)); box-shadow:var(--arc-shadow-gold); font-weight:700; }
+    button.primary:hover:not(:disabled) { color:var(--arc-on-gold); background:linear-gradient(180deg,var(--arc-gold-300),var(--arc-gold-500)); }
+    button.primary:active:not(:disabled) { background:var(--arc-gold-600); }
+    button.primary:focus-visible { box-shadow:var(--arc-focus-ring),var(--arc-shadow-gold); }
+    button.danger { border-color:rgba(224,109,92,.45); color:var(--arc-danger); }
+    button:disabled { cursor:not-allowed; color:var(--arc-text-disabled); border-color:var(--arc-line); }
+    .fields { display:grid; gap:var(--arc-space-4); margin-top:var(--arc-space-5); }
+    .field { display:grid; gap:6px; }
+    .field-label { color:var(--arc-text-data); font-family:var(--arc-font-display); font-size:var(--arc-text-sm); letter-spacing:.06em; }
+    .field-label .required { margin-left:4px; color:var(--arc-gold-400); }
+    .hint { color:var(--arc-text-muted); font-size:var(--arc-text-sm); line-height:1.35; }
+    .field-error { display:none; align-items:center; gap:6px; color:var(--arc-danger); font-size:var(--arc-text-sm); line-height:1.35; }
+    .field-error svg { width:14px; height:14px; flex:none; }
+    .field.invalid .field-error { display:flex; }
+    input,textarea { width:100%; min-height:42px; color:var(--arc-text-body); border:1px solid var(--arc-line-strong); border-radius:var(--arc-radius-md); background:var(--arc-surface-field); padding:9px var(--arc-space-3); outline:none; font-family:var(--arc-font-body); font-size:var(--arc-text-md); letter-spacing:0; transition:border-color var(--arc-duration-base) var(--arc-ease-out),box-shadow var(--arc-duration-base) var(--arc-ease-out); }
+    input::placeholder,textarea::placeholder { color:var(--arc-text-muted); opacity:1; }
+    input:focus-visible,textarea:focus-visible { border-color:var(--arc-gold-400); box-shadow:0 0 0 3px rgba(216,181,107,.18); }
+    .field.invalid input,.field.invalid textarea { border-color:var(--arc-danger); }
+    .field.invalid input:focus-visible,.field.invalid textarea:focus-visible { box-shadow:0 0 0 3px rgba(224,109,92,.2); }
     textarea { min-height:112px; resize:vertical; }
-    .check { display:flex!important; grid-template-columns:none!important; align-items:center; gap:10px!important; }.check input{width:auto}
+    .check { display:flex; align-items:center; gap:var(--arc-space-3); cursor:pointer; }
+    .check .field-label { color:var(--arc-text-data); }
+    .check input { -webkit-appearance:none; appearance:none; flex:none; width:20px; height:20px; min-height:0; margin:0; padding:0; display:grid; place-items:center; border:1px solid var(--arc-gold-600); border-radius:var(--arc-radius-sm); background:var(--arc-surface-field); cursor:pointer; }
+    .check input::after { content:""; width:10px; height:6px; margin-top:-3px; border:solid var(--arc-on-gold); border-width:0 0 2px 2px; transform:rotate(-45deg); opacity:0; }
+    .check input:checked { border-color:var(--arc-gold-500); background:var(--arc-gold-500); }
+    .check input:checked::after { opacity:1; }
+    .check input:focus-visible { box-shadow:var(--arc-focus-ring); }
     .range { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:14px; }
-    .range input { -webkit-appearance:none; appearance:none; height:22px; padding:0; border:0; background:transparent; box-shadow:none; cursor:pointer; }
-    .range input:focus { box-shadow:none; }
-    .range input::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:linear-gradient(90deg,var(--gold) var(--fill,0%),#2a241a var(--fill,0%)); }
-    .range input::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; margin-top:-5px; border-radius:50%; border:1px solid #1a1306; background:var(--bright); box-shadow:0 0 0 3px rgba(201,162,90,.15); }
-    .range input:focus-visible::-webkit-slider-thumb { box-shadow:0 0 0 4px rgba(201,162,90,.35); }
-    .range output { min-width:72px; text-align:right; color:var(--data); font-family:var(--mono); font-size:12px; letter-spacing:0; font-variant-numeric:tabular-nums; }
-    .select-wrap { position:relative; width:100%; min-width:180px; font-family:var(--spectral); letter-spacing:0; }
-    .select-button { width:100%; display:flex; align-items:center; justify-content:space-between; text-align:left; color:var(--ink); background:var(--well); border:1px solid rgba(201,162,90,.18); padding:10px 12px; font-family:var(--spectral); font-size:13px; letter-spacing:0; }
-    .select-button::after { content:""; width:0; height:0; flex:none; margin-left:10px; border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid var(--muted); }
-    .select-wrap.open .select-button { border-color:rgba(201,162,90,.42); }
-    .select-wrap.invalid .select-button { border-color:rgba(165,75,65,.7); box-shadow:0 0 0 2px rgba(165,75,65,.1); }
-    .select-menu { display:none; position:fixed; z-index:40; overflow-y:auto; padding:4px; background:var(--window); border:1px solid rgba(201,162,90,.3); border-radius:4px; box-shadow:0 14px 34px rgba(0,0,0,.65); }
+    .range input { -webkit-appearance:none; appearance:none; min-height:0; height:24px; padding:0; border:0; background:transparent; box-shadow:none; cursor:pointer; }
+    .range input:focus-visible { box-shadow:none; }
+    .range input::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:linear-gradient(90deg,var(--arc-gold-500) var(--fill,0%),var(--arc-surface-track) var(--fill,0%)); }
+    .range input::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; margin-top:-6px; border-radius:50%; border:1px solid var(--arc-on-gold); background:var(--arc-gold-400); box-shadow:0 0 0 3px rgba(201,162,90,.15); }
+    .range input:focus-visible::-webkit-slider-thumb { box-shadow:var(--arc-focus-ring); }
+    .range output { min-width:72px; text-align:right; color:var(--arc-text-data); font-family:var(--arc-font-mono); font-size:var(--arc-text-sm); font-variant-numeric:tabular-nums; }
+    .select-wrap { position:relative; width:100%; min-width:180px; font-family:var(--arc-font-body); letter-spacing:0; }
+    .select-button { width:100%; min-height:42px; display:flex; align-items:center; justify-content:space-between; text-align:left; padding:0 var(--arc-space-3); color:var(--arc-text-body); background:var(--arc-surface-field); border:1px solid var(--arc-line-strong); font-family:var(--arc-font-body); font-size:var(--arc-text-md); letter-spacing:0; }
+    .select-button:hover:not(:disabled) { color:var(--arc-text-heading); background:var(--arc-surface-field); }
+    .select-button:focus-visible { border-color:var(--arc-gold-400); box-shadow:0 0 0 3px rgba(216,181,107,.18); }
+    .select-button::after { content:""; width:0; height:0; flex:none; margin-left:10px; border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid var(--arc-gold-500); transition:transform var(--arc-duration-base) var(--arc-ease-out); }
+    .select-wrap.open .select-button { border-color:var(--arc-gold-400); }
+    .select-wrap.open .select-button::after { transform:rotate(180deg); }
+    .field.invalid .select-button { border-color:var(--arc-danger); }
+    .select-menu { display:none; position:fixed; z-index:40; overflow-y:auto; padding:var(--arc-space-1); background:var(--arc-surface-window); border:1px solid var(--arc-line-strong); border-radius:var(--arc-radius-md); box-shadow:0 14px 34px rgba(0,0,0,.65); }
     .select-wrap.open .select-menu { display:block; }
-    .select-search { position:sticky; top:0; z-index:1; margin-bottom:4px; background:#17140f; }
+    .select-search { position:sticky; top:0; z-index:1; margin-bottom:var(--arc-space-1); background:var(--arc-surface-raised); }
     .select-results { display:grid; gap:1px; }
-    .select-option { display:grid; gap:2px; width:100%; min-height:34px; text-align:left; border:0; padding:8px 10px; color:var(--ink); background:transparent; font-family:var(--spectral); font-size:13px; letter-spacing:0; }
-    .select-option-description,.select-empty { color:var(--muted); font-family:var(--mono); font-size:10px; line-height:1.35; }
+    .select-option { display:grid; gap:2px; width:100%; min-height:36px; text-align:left; border:0; padding:var(--arc-space-2) 10px; color:var(--arc-text-body); background:transparent; font-family:var(--arc-font-body); font-size:var(--arc-text-md); letter-spacing:0; }
+    .select-option-description,.select-empty { color:var(--arc-text-muted); font-family:var(--arc-font-mono); font-size:var(--arc-text-xs); line-height:1.35; }
     .select-empty { padding:10px; }
-    .select-option:hover,.select-option:focus-visible { color:var(--heading); background:rgba(201,162,90,.12); }
-    .select-option.on { color:#ecdcb7; background:rgba(201,162,90,.18); }
-    .options { display:grid; gap:9px; margin-top:18px; }
-    .option { width:100%; text-align:left; padding:13px 14px; display:grid; gap:4px; background:var(--card); border-color:var(--hair); font-family:var(--spectral); letter-spacing:0; }
-    .option.has-icon { grid-template-columns:48px minmax(0,1fr); align-items:center; column-gap:12px; }
+    .select-option:hover:not(:disabled) { color:var(--arc-text-heading); background:rgba(201,162,90,.1); }
+    .select-option:focus-visible { color:var(--arc-text-heading); background:rgba(201,162,90,.1); box-shadow:inset 0 0 0 2px var(--arc-gold-400); }
+    .select-option.on { color:var(--arc-text-heading); background:rgba(201,162,90,.18); }
+    .options { display:grid; gap:var(--arc-space-2); margin-top:var(--arc-space-5); }
+    .option { width:100%; min-height:0; text-align:left; padding:var(--arc-space-3) 14px; display:grid; gap:4px; background:var(--arc-surface-raised); border-color:var(--arc-line); font-family:var(--arc-font-body); font-size:var(--arc-text-md); letter-spacing:0; }
+    .option:hover:not(:disabled) { background:rgba(201,162,90,.1); }
+    .option.has-icon { grid-template-columns:48px minmax(0,1fr); align-items:center; column-gap:var(--arc-space-3); }
     .option-icon { width:44px; height:44px; object-fit:contain; filter:drop-shadow(0 4px 7px #000); }
     .option-body { min-width:0; display:grid; gap:4px; }
-    .option .title { color:var(--heading); font-family:var(--cinzel); font-size:12px; letter-spacing:.06em; }.option .description{color:var(--muted);font-size:13px;line-height:1.4}.option.error{border-color:rgba(165,75,65,.5)}.option.success{border-color:rgba(125,155,100,.45)}.option.warning{border-color:rgba(201,162,90,.42)}
-    .metadata { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:4px; color:var(--data); font-family:var(--mono); font-size:11px; }.metadata b{color:var(--gold);font-weight:normal}
-    .progress-track { height:8px; margin-top:22px; overflow:hidden; border:1px solid var(--hair); border-radius:3px; background:#2a241a; }
-    #progress-fill { height:100%; width:0; background:linear-gradient(90deg,#846a35,var(--gold)); transition:width .08s linear; }
-    #progress-time { margin-top:9px; color:var(--muted); text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; }
+    .option .title { color:var(--arc-text-heading); font-family:var(--arc-font-display); font-size:var(--arc-text-sm); letter-spacing:.06em; }
+    .option .description { color:var(--arc-text-muted); font-size:var(--arc-text-sm); line-height:1.4; }
+    .option.error { border-color:rgba(224,109,92,.5); } .option.success { border-color:rgba(163,189,130,.45); } .option.warning { border-color:rgba(224,154,82,.45); }
+    .option:disabled .title,.option:disabled .description,.option:disabled .metadata,.option:disabled .metadata b { color:var(--arc-text-disabled); }
+    .option:disabled .option-icon { opacity:.5; }
+    .metadata { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:4px; color:var(--arc-text-data); font-family:var(--arc-font-mono); font-size:var(--arc-text-xs); }
+    .metadata b { color:var(--arc-gold-500); font-weight:normal; }
+    .progress-track { height:8px; margin-top:var(--arc-space-6); overflow:hidden; border:1px solid var(--arc-line); border-radius:var(--arc-radius-sm); background:var(--arc-surface-track); }
+    #progress-fill { height:100%; width:0; background:linear-gradient(90deg,var(--arc-gold-600),var(--arc-gold-500)); transition:width .08s linear; }
+    .progress-time { margin-top:var(--arc-space-2); color:var(--arc-text-muted); text-align:right; font-family:var(--arc-font-mono); font-size:var(--arc-text-sm); font-variant-numeric:tabular-nums; }
     @keyframes arrive { from{opacity:0;transform:translateX(18px)} to{opacity:1;transform:none} } @keyframes leave{to{opacity:0;transform:translateX(18px)}}
+    @media (prefers-reduced-motion: reduce) { .toast,.toast.leave { animation:none; } .toast.leave { opacity:0; } #progress-fill { transition:none; } }
   </style>
 </head>
 <body>
-  <div id="toasts" aria-live="polite"></div>
+  <div id="toasts" role="status" aria-live="polite"></div>
   <div id="overlay"><section class="panel" id="panel" role="dialog" aria-modal="true"></section></div>
   <script>
     const toasts=document.querySelector("#toasts"),overlay=document.querySelector("#overlay"),panel=document.querySelector("#panel");
@@ -84,6 +114,10 @@
     const send=(name,payload={})=>{try{callEvent(name,JSON.stringify(payload))}catch(_){}};
     const node=(tag,cls,text)=>{const el=document.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=String(text);return el};
     const add=(parent,...children)=>{for(const child of children)if(child)parent.appendChild(child);return parent};
+    // Each tone has its own shape, so the kind of message never depends on colour alone.
+    const glyph={inform:'<circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 7.2v4M8 4.6v.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',success:'<circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.8 8.2l2.1 2.1 4.3-4.6" fill="none" stroke="currentColor" stroke-width="1.6"/>',warning:'<path d="M8 1.8l6.6 12H1.4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6.3v3.4M8 11.4v.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',error:'<circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'};
+    const toneName={inform:"Notice",success:"Success",warning:"Warning",error:"Error"};
+    const icon=name=>{const wrap=document.createElement("span");wrap.innerHTML=`<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${glyph[name]||glyph.inform}</svg>`;return wrap.firstChild};
     function heading(title,content){const eyebrow=node("div","eyebrow","HMP Foundations");const h=node("h1","",title);const p=content?node("p","content",content):null;add(panel,eyebrow,h,p)}
     function actions(cancelLabel,confirmLabel,onConfirm,canCancel=true){const row=node("div","actions");if(canCancel){const cancel=node("button","",cancelLabel||"Cancel");cancel.onclick=()=>finish(current?.type==="alert"?"cancel":current?.type==="progress"?false:null);row.appendChild(cancel)}if(confirmLabel){const confirm=node("button","primary",confirmLabel);confirm.onclick=onConfirm;row.appendChild(confirm);setTimeout(()=>confirm.focus(),0)}panel.appendChild(row)}
     function finish(result){if(!current)return;const id=current.id;current=null;cancelAnimationFrame(progressFrame);progressFrame=0;closeSelects();overlay.classList.add("transitioning");panel.replaceChildren();send("response",{id,result})}
@@ -105,14 +139,25 @@
     }
     const decimals=step=>{const text=String(step??1),dot=text.indexOf(".");return dot<0?0:Math.min(4,text.length-dot-1)};
     function rangeControl(field,live){const wrap=node("div","range"),input=node("input"),out=node("output");input.type="range";input.name=field.name;input.min=String(field.min);input.max=String(field.max);if(field.step!==undefined)input.step=String(field.step);input.value=String(field.default??field.min);const paint=()=>{const span=field.max-field.min,ratio=span>0?(Number(input.value)-field.min)/span:0;input.style.setProperty("--fill",`${Math.round(ratio*1000)/10}%`);out.textContent=`${Number(input.value).toFixed(decimals(field.step))}${field.unit?` ${field.unit}`:""}`};input.addEventListener("input",()=>{paint();live?.(field,Number(input.value),true)});paint();wrap.append(input,out);return wrap}
-    function fieldControl(field,live){if(field.type==="select")return selectControl(field,live?value=>live(field,value):null);if(field.type==="range")return rangeControl(field,live);let input;if(field.type==="textarea")input=node("textarea");else{input=node("input");input.type=field.type==="number"?"number":field.type==="checkbox"?"checkbox":field.type==="password"?"password":"text"}input.name=field.name;if(field.placeholder)input.placeholder=field.placeholder;if(field.required)input.required=true;if(field.min!==undefined)input.min=String(field.min);if(field.max!==undefined)input.max=String(field.max);if(field.step!==undefined)input.step=String(field.step);if(field.type==="checkbox")input.checked=field.default===true;else if(field.default!==undefined)input.value=String(field.default);if(live&&field.type==="checkbox")input.addEventListener("change",()=>live(field,input.checked));else if(live&&field.type==="number")input.addEventListener("change",()=>{if(input.value!==""&&input.checkValidity())live(field,Number(input.value))});return input}
+    // Off-screen CEF never draws the browser's validation bubble, so errors are written under the field instead.
+    function fieldMessage(field,control){if(field.type==="select")return field.required&&!control.value?"Choose an option.":"";if(field.type==="checkbox")return field.required&&!control.checked?"Tick this box to continue.":"";const v=control.validity;if(v.valid)return "";if(v.valueMissing)return "Enter a value.";if(v.badInput)return "Enter a number.";if(v.rangeUnderflow||v.rangeOverflow)return field.min!==undefined&&field.max!==undefined?`Use a value from ${field.min} to ${field.max}.`:v.rangeUnderflow?`Use ${field.min} or more.`:`Use ${field.max} or less.`;if(v.stepMismatch)return `Use steps of ${field.step??1}.`;return control.validationMessage}
+    function fieldControl(field,live,edited){if(field.type==="select")return selectControl(field,value=>{edited();live?.(field,value)});if(field.type==="range")return rangeControl(field,live);let input;if(field.type==="textarea")input=node("textarea");else{input=node("input");input.type=field.type==="number"?"number":field.type==="checkbox"?"checkbox":field.type==="password"?"password":"text"}input.name=field.name;if(field.placeholder)input.placeholder=field.placeholder;if(field.required)input.required=true;if(field.min!==undefined)input.min=String(field.min);if(field.max!==undefined)input.max=String(field.max);if(field.step!==undefined)input.step=String(field.step);if(field.type==="checkbox")input.checked=field.default===true;else if(field.default!==undefined)input.value=String(field.default);input.addEventListener(field.type==="checkbox"?"change":"input",edited);if(live&&field.type==="checkbox")input.addEventListener("change",()=>live(field,input.checked));else if(live&&field.type==="number")input.addEventListener("change",()=>{if(input.value!==""&&input.checkValidity())live(field,Number(input.value))});return input}
     // Live dialogs report edits as they happen; a dragged slider is held to one report per 100 ms, its last value always sent.
     function liveSender(id){const last=new Map(),timers=new Map();const emit=(field,value)=>{if(current?.id===id)send("change",{id,name:field.name,value})};return(field,value,throttle=false)=>{clearTimeout(timers.get(field.name));if(!throttle){emit(field,value);return}const now=performance.now(),wait=100-(now-(last.get(field.name)||0));if(wait<=0){last.set(field.name,now);emit(field,value)}else timers.set(field.name,setTimeout(()=>{last.set(field.name,performance.now());emit(field,value)},wait))}}
-    function renderInput(payload){heading(payload.title);const live=payload.live?liveSender(current.id):null;const form=node("form","fields");for(const field of payload.fields||[]){const label=node("label",field.type==="checkbox"?"field check":"field");const control=fieldControl(field,live);if(field.type==="checkbox")add(label,control,node("span","",field.label));else add(label,node("span","",field.label),field.description?node("span","hint",field.description):null,control);form.appendChild(label)}panel.appendChild(form);const submit=()=>{if(!form.reportValidity())return;for(const field of payload.fields||[]){const control=form.elements.namedItem(field.name);if(field.type==="select"&&field.required&&!control.value){const wrap=control.closest(".select-wrap");wrap?.classList.add("invalid");wrap?.querySelector(".select-button")?.focus();return}}const result={};for(const field of payload.fields||[]){const control=form.elements.namedItem(field.name);result[field.name]=field.type==="checkbox"?control.checked:field.type==="number"||field.type==="range"?Number(control.value):control.value}finish(result)};form.onsubmit=e=>{e.preventDefault();submit()};actions(payload.cancelLabel,payload.submitLabel,submit,payload.allowCancel!==false)}
-    function renderContext(payload){heading(payload.title,payload.description);const list=node("div","options");for(const option of payload.options||[]){const button=node("button",`option ${option.tone||""} ${option.icon?"has-icon":""}`);button.disabled=option.disabled===true;const body=node("span","option-body");add(body,node("span","title",option.title),option.description?node("span","description",option.description):null);if(option.metadata?.length){const meta=node("span","metadata");for(const item of option.metadata){const part=node("span");add(part,node("b","",`${item.label}: `),document.createTextNode(item.value));meta.appendChild(part)}body.appendChild(meta)}if(option.icon){const image=node("img","option-icon");image.src=option.icon;image.alt="";image.onerror=()=>image.remove();button.appendChild(image)}button.appendChild(body);button.onclick=()=>finish(option.id);list.appendChild(button)}panel.appendChild(list);actions(payload.cancelLabel,null,null,payload.canClose!==false)}
-    function renderProgress(payload){heading("Please wait",payload.label);const track=node("div","progress-track"),fill=node("div");fill.id="progress-fill";track.appendChild(fill);const time=node("div","progress-time");panel.append(track,time);const began=performance.now();const tick=now=>{const elapsed=Math.max(0,now-began),ratio=Math.min(1,elapsed/payload.duration);fill.style.width=`${ratio*100}%`;time.textContent=`${Math.ceil(Math.max(0,payload.duration-elapsed)/1000)}s`;if(ratio>=1)finish(true);else progressFrame=requestAnimationFrame(tick)};progressFrame=requestAnimationFrame(tick);actions(payload.cancelLabel,null,null,payload.canCancel===true)}
+    function renderInput(payload){heading(payload.title);const live=payload.live?liveSender(current.id):null;const form=node("form","fields");form.noValidate=true;const rows=[];
+      const setError=(row,message)=>{row.box.classList.toggle("invalid",Boolean(message));row.text.textContent=message;if(message)row.target.setAttribute("aria-invalid","true");else row.target.removeAttribute("aria-invalid")};
+      (payload.fields||[]).forEach((field,index)=>{const id=`hmp-field-${index}`,check=field.type==="checkbox",box=node("div","field"),row={field,box};const control=fieldControl(field,live,()=>{if(box.classList.contains("invalid"))setError(row,"")});
+        row.target=field.type==="select"?control.querySelector(".select-button"):field.type==="range"?control.querySelector("input"):control;row.target.id=id;
+        const name=node(check?"span":"label","field-label",field.label);if(!check)name.htmlFor=id;if(field.required){const star=node("span","required","*");star.setAttribute("aria-hidden","true");name.appendChild(star);row.target.setAttribute("aria-required","true")}
+        const hint=field.description&&!check?node("span","hint",field.description):null;if(hint)hint.id=`${id}-hint`;const error=node("span","field-error");error.id=`${id}-error`;row.text=node("span");add(error,icon("error"),row.text);
+        row.target.setAttribute("aria-describedby",[hint?.id,error.id].filter(Boolean).join(" "));
+        if(check){const label=node("label","check");add(label,control,name);add(box,label,error)}else add(box,name,hint,control,error);form.appendChild(box);rows.push(row)});
+      panel.appendChild(form);
+      const submit=()=>{let first=null;for(const row of rows){const message=fieldMessage(row.field,form.elements.namedItem(row.field.name));setError(row,message);if(message&&!first)first=row}if(first){first.target.focus();return}const result={};for(const field of payload.fields||[]){const control=form.elements.namedItem(field.name);result[field.name]=field.type==="checkbox"?control.checked:field.type==="number"||field.type==="range"?Number(control.value):control.value}finish(result)};form.onsubmit=e=>{e.preventDefault();submit()};actions(payload.cancelLabel,payload.submitLabel,submit,payload.allowCancel!==false)}
+    function renderContext(payload){heading(payload.title,payload.description);const list=node("div","options");for(const option of payload.options||[]){const button=node("button",`option ${option.tone||""} ${option.icon?"has-icon":""}`);button.disabled=option.disabled===true;const body=node("span","option-body");add(body,node("span","title",option.title),option.description?node("span","description",option.description):null);if(option.metadata?.length){const meta=node("span","metadata");for(const item of option.metadata){const part=node("span");add(part,node("b","",`${item.label}: `),document.createTextNode(item.value));meta.appendChild(part)}body.appendChild(meta)}if(option.icon){const image=node("img","option-icon");image.src=option.icon;image.alt="";image.onerror=()=>{image.remove();button.classList.remove("has-icon")};button.appendChild(image)}button.appendChild(body);button.onclick=()=>finish(option.id);list.appendChild(button)}panel.appendChild(list);actions(payload.cancelLabel,null,null,payload.canClose!==false)}
+    function renderProgress(payload){heading("Please wait",payload.label);const track=node("div","progress-track"),fill=node("div");fill.id="progress-fill";track.setAttribute("role","progressbar");track.setAttribute("aria-valuemin","0");track.setAttribute("aria-valuemax","100");if(payload.label)track.setAttribute("aria-label",payload.label);track.appendChild(fill);const time=node("div","progress-time");panel.append(track,time);const began=performance.now();const tick=now=>{const elapsed=Math.max(0,now-began),ratio=Math.min(1,elapsed/payload.duration);fill.style.width=`${ratio*100}%`;track.setAttribute("aria-valuenow",String(Math.round(ratio*100)));time.textContent=`${Math.ceil(Math.max(0,payload.duration-elapsed)/1000)}s`;if(ratio>=1)finish(true);else progressFrame=requestAnimationFrame(tick)};progressFrame=requestAnimationFrame(tick);actions(payload.cancelLabel,null,null,payload.canCancel===true)}
     function renderRequest(request){if(!request?.id||current)return;current=request;panel.replaceChildren();overlay.classList.remove("transitioning");overlay.classList.add("open");if(request.type==="alert")renderAlert(request.payload);else if(request.type==="input")renderInput(request.payload);else if(request.type==="context")renderContext(request.payload);else if(request.type==="progress")renderProgress(request.payload)}
-    function notify(payload){const toast=node("article",`toast ${payload.tone||"inform"}`);if(payload.title)toast.appendChild(node("strong","",payload.title));toast.appendChild(node("p","",payload.description));toasts.appendChild(toast);toastCount++;setTimeout(()=>{toast.classList.add("leave");setTimeout(()=>{toast.remove();toastCount--;if(!toastCount)send("idle")},190)},payload.duration||4500)}
+    function notify(payload){const tone=glyph[payload.tone]?payload.tone:"inform",toast=node("article",`toast ${tone}`),body=node("div");add(body,payload.title?node("strong","",payload.title):null,node("p"));const text=body.lastChild;add(text,node("span","sr-only",`${toneName[tone]}: `),document.createTextNode(String(payload.description??"")));add(toast,icon(tone),body);toasts.appendChild(toast);toastCount++;setTimeout(()=>{toast.classList.add("leave");setTimeout(()=>{toast.remove();toastCount--;if(!toastCount)send("idle")},190)},payload.duration||4500)}
     window.addEventListener("request",event=>renderRequest(event.detail));window.addEventListener("notify",event=>notify(event.detail||{}));window.addEventListener("clear",()=>{if(current){cancelAnimationFrame(progressFrame);current=null}closeSelects();overlay.classList.remove("open","transitioning");panel.replaceChildren()});
     document.addEventListener("click",()=>closeSelects());panel.addEventListener("scroll",()=>closeSelects());
     window.addEventListener("keydown",event=>{if(event.key!=="Escape"||!current)return;if(document.querySelector(".select-wrap.open")){event.preventDefault();closeSelects();return}const p=current.payload||{};const allowed=current.type==="alert"?p.cancel!==false:current.type==="input"?p.allowCancel!==false:current.type==="context"?p.canClose!==false:current.type==="progress"?p.canCancel===true:false;if(allowed){event.preventDefault();finish(current.type==="alert"?"cancel":current.type==="progress"?false:null)}});

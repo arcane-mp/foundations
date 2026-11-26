@@ -15,15 +15,29 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ### Changed
 
+- `hmp-ui` draws with the Arcanum tokens from its own `dist/arcanum/`; its layout and API are unchanged.
+  A notification shows its tone with an icon of its own shape and a title in the tone's colour, instead of a
+  coloured stripe alone, and a screen reader hears the tone. Warnings use `#e09a52`, which no longer reads as
+  the gold accent. Every control has a visible keyboard focus ring, checkboxes are drawn in Arcanum instead of
+  the browser's blue box, required fields are marked, and no text is smaller than 12 px (the eyebrow, select
+  option descriptions and context metadata were 10-11 px).
+- `hmp-ui` input dialogs show why a field is invalid under the field and focus it. They relied on the
+  browser's validation bubble, which off-screen CEF does not draw, so a dialog with a missing or out-of-range
+  value did nothing when the player pressed submit.
 - `hmp-spawn`, `hmp-emotes`, `hmp-inventory`, `hmp-characters` and `hmp-business` draw with the Arcanum
   tokens. Each page links its own `arcanum/tokens.css`, so Cinzel and Spectral now load everywhere (the
   emote menu fetched them from Google Fonts and the business panel from `hmp-ui`). Labels no longer drop
-  below 12px, the gold tones come from one scale, every control shows a focus ring, and animations stop
+  below 12 px, the gold tones come from one scale, every control shows a focus ring, and animations stop
   when the player asks for reduced motion. Selected rows are marked with a tint instead of a side bar.
 - The inventory footer sits in its own bar under the grid, and stack counts no longer cover item names.
 - Inventory cards can be selected with the keyboard.
 
 ### Fixed
+
+- `hmp-ui` progress dialogs style their remaining time. The rule targeted `#progress-time` while the element
+  carries the `progress-time` class, so it never applied.
+- An `hmp-ui` context option whose icon fails to load gives its text the full width. The icon column stayed,
+  and the title and description wrapped inside the 48 px column.
 
 - `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before
   the session held the character, so it left the character claimed by the ended session, and every later
