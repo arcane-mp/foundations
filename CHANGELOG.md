@@ -5,6 +5,14 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ## [Unreleased]
 
+### Added
+
+- `design/arcanum` is the single source of the Arcanum look: `tokens.css` (colour, type, space, corners,
+  elevation and motion as `--arc-*` properties) and the Cinzel and Spectral fonts with their OFL licences.
+  Spectral SemiBold joins Spectral Regular. `scripts/arcanum.mjs` copies it into a resource's `dist/`, so
+  each resource keeps shipping its own copy. `hmp-ui`, `hmp-characters` and `hmp-inventory` now take their
+  fonts from it instead of three identical copies; their builds produce the same files as before.
+
 ### Fixed
 
 - `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before
