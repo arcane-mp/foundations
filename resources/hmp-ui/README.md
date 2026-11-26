@@ -54,6 +54,10 @@ if (values) console.log(values.price, values.note);
 optional `step` (also honoured by `number` fields) and a short `unit` label. Submitted values must land
 on a step from `min`.
 
+The dialog checks `required`, `min`, `max` and `step` before it submits. A field that fails shows the
+reason under it and takes focus, and the dialog stays open until the player fixes it. Off-screen CEF does
+not draw the browser's own validation bubble, so the page never relies on it.
+
 Pass an `onChange` handler to hear edits while the dialog is still open. `number`, `range`, `checkbox`
 and `select` fields report as they change, a dragged slider at most every 100 ms with its final value
 always sent. Text fields only report on submit. Each value is validated against its field before your
