@@ -107,6 +107,6 @@ assert.ok(webHandlers.has("use"));
 assert.ok(emittedToServer.some((event) => event.name === "hmp-inventory:ready"));
 assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "index.html")));
 assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "icons", "potion.svg")));
-assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "fonts", "Cinzel-Variable.ttf")));
-assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "fonts", "Spectral-Regular.ttf")));
+assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "arcanum", "fonts", "Cinzel-Variable.ttf")));
+assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "arcanum", "fonts", "Spectral-Regular.ttf")));
 console.log("hmp-inventory bundle contract passed");

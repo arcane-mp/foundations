@@ -16,18 +16,15 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Spectral:wght@300;400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <link rel="stylesheet" href="arcanum/tokens.css" />
     <style>
       :root {
-        --card: #16120b; --well: #0e0b07;
-        --accent: #c9a25a; --bright: #d8b56b;
-        --heading: #f0e3c2; --body: #d5c8a9; --muted: #9c8f74;
-        --hair: rgba(201, 162, 90, 0.14);
-        --cinzel: "Cinzel", Georgia, serif;
-        --spectral: "Spectral", Georgia, serif;
+        --card: var(--arc-surface-window); --well: var(--arc-surface-field);
+        --accent: var(--arc-gold-500); --bright: var(--arc-gold-400);
+        --heading: var(--arc-text-heading); --body: var(--arc-text-body); --muted: var(--arc-text-muted);
+        --hair: var(--arc-line);
+        --cinzel: var(--arc-font-display);
+        --spectral: var(--arc-font-body);
         --row: 26px;
       }
       * { box-sizing: border-box; }
@@ -43,17 +40,17 @@
         background: linear-gradient(to left, rgba(8, 6, 4, 0.96), rgba(8, 6, 4, 0.9));
         border-left: 1px solid var(--hair); box-shadow: -24px 0 60px rgba(0, 0, 0, 0.45);
       }
-      .eyebrow { font-family: var(--cinzel); font-size: 10px; letter-spacing: 0.32em; color: #b89a64; text-transform: uppercase; }
+      .eyebrow { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.32em; color: var(--arc-gold-500); text-transform: uppercase; }
       h1 { font-family: var(--cinzel); font-weight: 600; font-size: 24px; letter-spacing: 0.06em; color: var(--heading); margin: 6px 0 4px; }
-      .hint { font-size: 12px; color: var(--muted); margin: 0 0 14px; line-height: 1.5; }
-      .hint kbd { font-family: var(--cinzel); font-size: 10px; letter-spacing: 0.08em; color: var(--body);
+      .hint { font-size: var(--arc-text-xs); color: var(--muted); margin: 0 0 14px; line-height: 1.5; }
+      .hint kbd { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.08em; color: var(--body);
         border: 1px solid var(--hair); border-radius: 3px; padding: 1px 5px; }
       .hint .lit { color: var(--bright); font-weight: 400; }
 
       /* Tabs: the figure's parameters have no other home — the menu owns the keyboard while it's open,
          so there is no chat to type a command into. */
       .tabs { display: flex; gap: 2px; margin: 2px 0 14px; border-bottom: 1px solid var(--hair); }
-      .tabs button { font-family: var(--cinzel); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+      .tabs button { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.2em; text-transform: uppercase;
         color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent;
         cursor: pointer; padding: 8px 12px; margin-bottom: -1px; }
       .tabs button:hover { color: var(--body); }
@@ -66,42 +63,42 @@
 
       #tune { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 2px; }
       .knob { display: grid; grid-template-columns: 108px 1fr 62px; gap: 12px; align-items: center; padding: 7px 6px; }
-      .knob + .knob { border-top: 1px solid rgba(201, 162, 90, 0.07); }
-      .knob label { font-size: 12px; color: var(--body); }
-      .knob .num { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--accent); text-align: right; }
-      .knob .why { grid-column: 1 / -1; font-size: 11px; color: var(--muted); line-height: 1.45; margin: -2px 6px 0; }
+      .knob + .knob { border-top: 1px solid var(--arc-line-soft); }
+      .knob label { font-size: var(--arc-text-xs); color: var(--body); }
+      .knob .num { font-family: var(--arc-font-mono); font-size: var(--arc-text-xs); color: var(--accent); text-align: right; }
+      .knob .why { grid-column: 1 / -1; font-size: var(--arc-text-xs); color: var(--muted); line-height: 1.45; margin: -2px 6px 0; }
       .knob input[type="range"] { width: 100%; height: 3px; -webkit-appearance: none; appearance: none;
         background: rgba(201, 162, 90, 0.2); border-radius: 2px; outline: none; }
       .knob input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
         width: 13px; height: 13px; border-radius: 50%; background: var(--accent); cursor: pointer; }
       .tunefoot { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; padding: 10px 6px; }
-      .tunefoot button { font-family: var(--cinzel); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+      .tunefoot button { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.2em; text-transform: uppercase;
         color: var(--muted); background: none; border: 0; cursor: pointer; padding: 4px 0; white-space: nowrap; }
       .tunefoot button:hover { color: var(--heading); }
-      #dumpout { font-family: ui-monospace, Consolas, monospace; font-size: 10px; color: var(--accent);
+      #dumpout { font-family: var(--arc-font-mono); font-size: var(--arc-text-xs); color: var(--accent);
         line-height: 1.5; padding: 0 6px 14px; white-space: pre-wrap; word-break: break-all; }
 
-      #search { width: 100%; font-family: var(--spectral); font-size: 14px; color: var(--heading);
+      #search { width: 100%; font-family: var(--spectral); font-size: var(--arc-text-md); color: var(--heading);
         background: var(--well); border: 1px solid var(--hair); border-radius: 6px; padding: 10px 14px; outline: none; }
-      #search::placeholder { color: #6b6250; }
-      #search:focus { border-color: rgba(201, 162, 90, 0.45); }
+      #search::placeholder { color: var(--arc-text-muted); }
+      #search:focus { border-color: var(--arc-gold-600); box-shadow: var(--arc-focus-ring); }
 
-      #count { font-size: 11px; color: var(--muted); padding: 10px 2px 6px; letter-spacing: 0.04em; }
+      #count { font-size: var(--arc-text-xs); color: var(--muted); padding: 10px 2px 6px; letter-spacing: 0.04em; }
       #count b { color: var(--accent); font-weight: 500; }
 
-      .head, .row { display: grid; grid-template-columns: 24px 24px 1fr 92px; gap: 8px; align-items: center; }
+      .head, .row { display: grid; grid-template-columns: 24px 24px 1fr 112px; gap: 8px; align-items: center; }
       /* Sized and centred even when empty, so the path column can't shift between favourited rows. */
       .star { font-size: 15px; line-height: 1; text-align: center; cursor: pointer; user-select: none;
-        color: #4d4636; }
+        color: var(--arc-text-disabled); }
       .star:hover { color: var(--bright); }
       .star.on { color: var(--accent); }
       .allowed { font-size: 15px; line-height: 1; text-align: center; cursor: default; user-select: none;
-        color: #4d4636; }
+        color: var(--arc-text-disabled); }
       .allowed.editable { cursor: pointer; }
       .allowed.editable:hover { color: var(--bright); }
-      .allowed.on { color: #8fad72; }
-      .head { font-family: var(--cinzel); font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
-        color: #7d7259; padding: 0 8px 6px; border-bottom: 1px solid var(--hair); }
+      .allowed.on { color: var(--arc-success); }
+      .head { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
+        color: var(--arc-text-muted); padding: 0 8px 6px; border-bottom: 1px solid var(--hair); }
 
       /* Virtualized: 10k+ rows, so only the visible window is in the DOM. */
       #list { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
@@ -109,50 +106,53 @@
 
       .row { position: absolute; left: 0; right: 0; height: var(--row); padding: 0 8px;
         cursor: pointer; border-radius: 3px; }
-      .row:hover { background: rgba(201, 162, 90, 0.07); }
-      .row.sel { background: rgba(201, 162, 90, 0.13); box-shadow: inset 2px 0 0 var(--accent); }
+      .row:hover { background: var(--arc-line-soft); }
+      .row.sel { background: rgba(201, 162, 90, 0.16); }
       .row.playing .path { color: var(--bright); }
-      .path { display: flex; min-width: 0; overflow: hidden; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-        font-size: 11px; white-space: nowrap; }
+      .path { display: flex; min-width: 0; overflow: hidden; font-family: var(--arc-font-mono);
+        font-size: var(--arc-text-xs); white-space: nowrap; }
       /* The directory is what gets sacrificed when a path overflows, and it clips from the LEFT so the
          meaningful tail (.../Stations/Sitting/) survives. Its text is bidi-isolated to stay LTR.
          The lopsided shrink factors spend the directory almost entirely before the filename gives any. */
-      .dir { flex: 0 999 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #6f6650; direction: rtl; }
+      .dir { flex: 0 999 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--arc-text-muted); direction: rtl; }
       .base { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--body); }
       /* Abilities are the rows that genuinely animate, so they read brighter than the pose clips. */
       .row.ability .base { color: var(--bright); }
       .path mark { background: none; color: var(--bright); }
-      .alias { font-family: var(--cinzel); font-size: 11px; letter-spacing: 0.06em; color: var(--accent);
+      .alias { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.06em; color: var(--accent);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .alias.none { color: #4d4636; }
+      .alias.none { color: var(--arc-text-disabled); }
       /* Named by the server owner rather than shipped in the mod's registry. */
       .alias.mine { color: var(--bright); font-style: italic; }
       .alias.editable { cursor: text; }
       .alias.editable:hover { color: var(--bright); text-decoration: underline; text-decoration-color: rgba(201,162,90,.45); }
-      .aliasedit { width: 100%; font-family: var(--cinzel); font-size: 11px; letter-spacing: 0.06em;
-        color: var(--heading); background: var(--well); border: 1px solid rgba(201, 162, 90, 0.45);
+      .aliasedit { width: 100%; font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.06em;
+        color: var(--heading); background: var(--well); border: 1px solid var(--arc-gold-600);
         border-radius: 3px; padding: 1px 4px; outline: none; }
 
-      #status { font-size: 12px; color: var(--muted); padding: 16px 8px; }
+      #status { font-size: var(--arc-text-xs); color: var(--muted); padding: 16px 8px; }
       .foot { display: flex; gap: 14px; align-items: center; padding-top: 12px; border-top: 1px solid var(--hair); margin-top: 8px; }
-      .foot button { font-family: var(--cinzel); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+      .foot button { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.2em; text-transform: uppercase;
         color: var(--muted); background: none; border: 0; cursor: pointer; padding: 6px 10px; }
       .foot button:hover { color: var(--heading); }
       .foot button.mode { color: var(--accent); }
       .foot .spacer { flex: 1; }
+      button:focus-visible, select:focus-visible, input[type="range"]:focus-visible, .aliasedit:focus-visible {
+        outline: none; box-shadow: var(--arc-focus-ring); border-radius: var(--arc-radius-sm); }
 
       /* Player activities: the game's own pastimes with a companion it animates, not a lobby. */
       #acts { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 2px; }
       .act { display: grid; grid-template-columns: 1fr 160px 72px; gap: 12px; align-items: center; padding: 7px 6px; }
-      .act + .act { border-top: 1px solid rgba(201, 162, 90, 0.07); }
-      .act span { font-size: 13px; color: var(--body); }
-      .act select { font-family: var(--spectral); font-size: 12px; color: var(--body); background: var(--well);
+      .act + .act { border-top: 1px solid var(--arc-line-soft); }
+      .act span { font-size: var(--arc-text-sm); color: var(--body); }
+      .act select { font-family: var(--spectral); font-size: var(--arc-text-xs); color: var(--body); background: var(--well);
         border: 1px solid var(--hair); border-radius: 3px; padding: 3px 4px; }
-      #acts button { font-family: var(--cinzel); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+      #acts button { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.2em; text-transform: uppercase;
         color: var(--accent); background: none; border: 0; cursor: pointer; padding: 6px 10px; }
       #acts button:hover { color: var(--heading); }
+      .act > button { grid-column: 3; justify-self: end; }
       #acts .finish { margin: 10px 0 0 6px; color: var(--muted); }
-      #now { font-size: 11px; color: var(--accent); font-family: ui-monospace, Consolas, monospace;
+      #now { font-size: var(--arc-text-xs); color: var(--accent); font-family: var(--arc-font-mono);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
     </style>
   </head>

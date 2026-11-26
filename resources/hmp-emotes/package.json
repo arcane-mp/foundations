@@ -26,7 +26,8 @@
     "files": [
       "dist/client.js",
       "dist/menu.html",
-      "dist/emote_assets.json"
+      "dist/emote_assets.json",
+      "dist/arcanum/**"
     ],
     "exports": ["emotes", "aliases", "favorites", "ui", "activities", "status"],
     "resourceDependencies": [

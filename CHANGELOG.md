@@ -24,6 +24,13 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 - `hmp-ui` input dialogs show why a field is invalid under the field and focus it. They relied on the
   browser's validation bubble, which off-screen CEF does not draw, so a dialog with a missing or out-of-range
   value did nothing when the player pressed submit.
+- `hmp-spawn`, `hmp-emotes`, `hmp-inventory`, `hmp-characters` and `hmp-business` draw with the Arcanum
+  tokens. Each page links its own `arcanum/tokens.css`, so Cinzel and Spectral now load everywhere (the
+  emote menu fetched them from Google Fonts and the business panel from `hmp-ui`). Labels no longer drop
+  below 12 px, the gold tones come from one scale, every control shows a focus ring, and animations stop
+  when the player asks for reduced motion. Selected rows are marked with a tint instead of a side bar.
+- The inventory footer sits in its own bar under the grid, and stack counts no longer cover item names.
+- Inventory cards can be selected with the keyboard.
 
 ### Fixed
 

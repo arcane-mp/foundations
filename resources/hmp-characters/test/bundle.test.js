@@ -145,8 +145,8 @@ assert.match(creatorBundle, /CHOOSE A DORMITORY/);
 const inlineScript = page.match(/<script>([\s\S]*?)<\/script>/);
 assert.ok(inlineScript);
 assert.doesNotThrow(() => new Function(inlineScript[1]));
-assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "fonts", "Cinzel-Variable.ttf")));
-assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "fonts", "Spectral-Regular.ttf")));
+assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "arcanum", "fonts", "Cinzel-Variable.ttf")));
+assert.ok(fs.existsSync(path.resolve(__dirname, "..", "dist", "arcanum", "fonts", "Spectral-Regular.ttf")));
 
 webHandlers.get("ready")();
 webHandlers.get("creator:ready")();

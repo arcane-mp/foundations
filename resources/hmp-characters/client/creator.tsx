@@ -31,12 +31,12 @@ interface Section { key: string; label: string; fallbackMax: number; optional?: 
 interface Tab { id: string; title: string; numeral: string; finalise?: boolean; sections: Section[]; camera: CameraFrame }
 
 const T = {
-    bg: "#0a0805", panel: "#0e0b07", panelAlt: "#100d08",
-    gold: "#d8b56b", goldBright: "#dcb96e", goldSoft: "#cdbb93",
-    goldLine: "rgba(201,162,90,.26)", goldLineSoft: "rgba(201,162,90,.12)", goldGlow: "rgba(201,162,90,.4)",
-    ink: "#d5c8a9", inkBright: "#f0e3c2", inkInput: "#ecdcb7",
-    muted: "#8a7b5f", mutedDim: "#5e553f", label: "#b89a64", dotOff: "#3f3829", error: "#cf7a5e",
-    display: "'Cinzel', serif", body: "'Spectral', Georgia, serif", mono: "ui-monospace, monospace",
+    bg: "var(--arc-surface-base)", panel: "var(--arc-surface-field)", panelAlt: "var(--arc-surface-panel)",
+    gold: "var(--arc-gold-400)", goldBright: "var(--arc-gold-400)", goldSoft: "var(--arc-text-data)",
+    goldLine: "var(--arc-line-strong)", goldLineSoft: "var(--arc-line)", goldGlow: "rgba(201,162,90,.4)",
+    ink: "var(--arc-text-body)", inkBright: "var(--arc-text-heading)", inkInput: "var(--arc-text-heading)",
+    muted: "var(--arc-text-muted)", mutedDim: "var(--arc-text-muted)", label: "var(--arc-gold-500)", dotOff: "var(--arc-surface-track)", error: "var(--arc-danger)",
+    display: "var(--arc-font-display)", body: "var(--arc-font-body)", mono: "var(--arc-font-mono)",
 } as const;
 
 const TABS: Tab[] = [
@@ -133,7 +133,7 @@ function Slider({ value, max, onChange }: { value: number; max: number; onChange
     </div>;
 }
 
-const buttonStyle: CSSProperties = { padding: "10px 14px", border: `1px solid ${T.goldLine}`, borderRadius: 4, background: T.panelAlt, color: T.ink, fontFamily: T.display, fontSize: 10, letterSpacing: ".14em", cursor: "pointer" };
+const buttonStyle: CSSProperties = { padding: "10px 14px", border: `1px solid ${T.goldLine}`, borderRadius: 4, background: T.panelAlt, color: T.ink, fontFamily: T.display, fontSize: 12, letterSpacing: ".14em", cursor: "pointer" };
 const fieldStyle: CSSProperties = { padding: "12px 14px", background: T.panel, border: `1px solid ${T.goldLine}`, borderRadius: 4, fontSize: 14, color: T.inkInput, outline: "none" };
 
 function hsvToHex({ h, s, v }: Hsv): string {
@@ -216,7 +216,7 @@ function ColourPicker({ value, onPick }: { value: string; onPick: (hex: string) 
 // The free colour sits behind a toggle; while closed it still names the colour worn.
 function ColourDetails({ open, onToggle, value, onPick }: { open: boolean; onToggle: () => void; value: string; onPick: (hex: string) => void }) {
     return <div style={{ marginTop: 14 }}>
-        <button className="hmp-hover" type="button" aria-expanded={open} onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 0, border: "none", background: "transparent", color: T.goldSoft, fontFamily: T.display, fontSize: 10, letterSpacing: ".18em", cursor: "pointer" }}>
+        <button className="hmp-hover" type="button" aria-expanded={open} onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 0, border: "none", background: "transparent", color: T.goldSoft, fontFamily: T.display, fontSize: 12, letterSpacing: ".18em", cursor: "pointer" }}>
             <span style={{ display: "inline-block", width: 10, fontSize: 15, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>&#8250;</span>DETAILS
             {value && !open && <span style={{ marginLeft: "auto", fontFamily: T.mono, fontSize: 12, letterSpacing: 0, color: "#c2b291" }}>{value}</span>}
         </button>
@@ -240,7 +240,7 @@ function ImportDialog({ busy, error, onClose, onImport }: { busy: boolean; error
     };
     return <div role="dialog" aria-modal="true" aria-labelledby="import-title" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }} style={{ position: "fixed", zIndex: 50, inset: 0, display: "grid", placeItems: "center", padding: 28, background: "rgba(4,3,2,.82)", backdropFilter: "blur(5px)" }}>
         <div style={{ width: "min(680px,92vw)", padding: 24, border: `1px solid ${T.goldLine}`, borderRadius: 7, background: T.bg, boxShadow: "0 26px 80px rgba(0,0,0,.72)" }}>
-            <div style={{ fontFamily: T.display, fontSize: 10, letterSpacing: ".3em", color: T.label }}>PORTABLE CHARACTER LOOK</div>
+            <div style={{ fontFamily: T.display, fontSize: 12, letterSpacing: ".3em", color: T.label }}>PORTABLE CHARACTER LOOK</div>
             <div id="import-title" style={{ marginTop: 8, fontFamily: T.display, fontSize: 22, color: T.inkBright }}>Import JSON</div>
             <p style={{ color: T.muted, fontSize: 13 }}>Paste an exported look or choose a JSON file. You can keep editing before confirming.</p>
             <textarea ref={input} value={text} onChange={(event) => setText(event.target.value)} readOnly={busy} spellCheck={false} placeholder={'{\n  "format": "arcanemp-look",\n  ...\n}'} style={{ width: "100%", minHeight: 310, resize: "vertical", padding: 14, border: `1px solid ${T.goldLine}`, borderRadius: 4, outline: "none", background: "#080604", color: T.inkInput, font: "12px/1.5 ui-monospace, monospace" }} />
@@ -405,15 +405,15 @@ function App() {
     const toggleDetails = (key: string) => setDetails((current) => ({ ...current, [key]: !current[key] }));
     const askDorm = capabilities.pronoun === true;
     const canConfirm = Boolean(first.trim() && last.trim() && (dorm || !askDorm));
-    const label = (text: string) => <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}><div style={{ fontFamily: T.display, fontSize: 11, letterSpacing: ".24em", color: T.label }}>{text}</div><div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(201,162,90,.28),transparent)" }} /></div>;
+    const label = (text: string) => <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}><div style={{ fontFamily: T.display, fontSize: 12, letterSpacing: ".24em", color: T.label }}>{text}</div><div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(201,162,90,.28),transparent)" }} /></div>;
     const choice = (text: string, active: boolean, action: () => void) => <button className="hmp-hover" type="button" onClick={action} style={{ position: "relative", padding: "14px 0", border: `1px solid ${active ? T.gold : T.goldLine}`, borderRadius: 5, background: active ? "rgba(201,162,90,.15)" : T.panel, color: T.ink, fontFamily: T.display, letterSpacing: ".14em", cursor: "pointer", boxShadow: active ? `0 0 14px ${T.goldGlow}` : "none" }}>{text}</button>;
 
     return <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "transparent", fontFamily: T.body, color: T.ink }}>
         <header style={{ flex: "none", padding: "20px 30px 14px", borderBottom: `1px solid ${T.goldLineSoft}`, background: "rgba(10,8,5,.94)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 12 }}>
                 <span style={{ width: 10, height: 10, background: T.gold, transform: "rotate(45deg)" }} />
-                <span style={{ fontFamily: T.display, fontWeight: 700, fontSize: 15, letterSpacing: ".3em", color: T.goldSoft }}>HogwartsMP</span>
-                <span style={{ fontFamily: T.display, fontSize: 10, letterSpacing: ".34em", color: "#7c7263" }}>CHARACTER CREATION</span>
+                <span style={{ fontFamily: T.display, fontWeight: 700, fontSize: 15, letterSpacing: ".3em", color: T.goldSoft }}>HMP Foundations</span>
+                <span style={{ fontFamily: T.display, fontSize: 12, letterSpacing: ".34em", color: T.muted }}>CHARACTER CREATION</span>
                 <button className="hmp-hover" type="button" onClick={() => { setImportError(""); setImportOpen(true); }} style={{ ...buttonStyle, marginLeft: "auto" }}>IMPORT JSON</button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 16 }}><h1 style={{ margin: 0, fontFamily: T.display, fontSize: 25, letterSpacing: ".1em", color: T.inkBright }}>{tab.title}</h1><div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(201,162,90,.32),transparent)" }} /></div>
@@ -453,16 +453,16 @@ function App() {
             <main style={{ flex: 1, position: "relative", overflow: "hidden", borderLeft: `1px solid ${T.goldLineSoft}`, background: isHost ? "transparent" : "radial-gradient(120% 86% at 64% 4%,rgba(58,72,86,.3),transparent 56%),linear-gradient(180deg,#0d0b08,#070504)" }}>
                 <div style={{ position: "absolute", inset: 0, background: "radial-gradient(74% 70% at 56% 42%,transparent 40%,rgba(0,0,0,.5) 100%)", pointerEvents: "none" }} />
                 {[{ left: "38%", top: "62%", delay: "0s" }, { left: "66%", top: "54%", delay: ".8s" }, { left: "54%", top: "70%", delay: "1.6s" }].map((speck, index) => <span key={index} style={{ position: "absolute", left: speck.left, top: speck.top, width: 3, height: 3, borderRadius: "50%", background: T.gold, animation: `specks ${6 + index}s ease-in-out ${speck.delay} infinite` }} />)}
-                <div style={{ position: "absolute", left: 22, top: 20 }}><div style={{ fontFamily: T.display, fontSize: 12, letterSpacing: ".18em", color: T.goldSoft }}>{tab.title}</div><div style={{ marginTop: 7, fontFamily: T.mono, fontSize: 10, color: "#7c7263" }}>HAIR {opts.hairStyle} · EYES {opts.eyeColour} · SKIN {opts.skin}</div></div>
+                <div style={{ position: "absolute", left: 22, top: 20 }}><div style={{ fontFamily: T.display, fontSize: 12, letterSpacing: ".18em", color: T.goldSoft }}>{tab.title}</div><div style={{ marginTop: 7, fontFamily: T.mono, fontSize: 12, color: T.muted }}>HAIR {opts.hairStyle} · EYES {opts.eyeColour} · SKIN {opts.skin}</div></div>
                 {isFinalise && <div style={{ position: "absolute", left: "50%", bottom: 52, transform: "translateX(-50%)", width: "min(380px,76%)", display: "grid", gap: 10 }}>
                     <button className="hmp-hover" type="button" onClick={() => bridge.exportLook(askDorm ? dorm || "" : "")} style={{ ...buttonStyle, padding: "12px 0", background: "rgba(12,9,6,.9)", color: T.goldSoft }}>COPY LOOK JSON</button>
                     <button className="hmp-hover" type="button" disabled={!canConfirm} onClick={() => { setOpen(false); bridge.confirm(first, last, askDorm ? dorm || "" : ""); }} style={{ ...buttonStyle, padding: "15px 0", background: canConfirm ? `linear-gradient(180deg,${T.goldBright},#bf9a4d)` : "#15120c", color: canConfirm ? "#1a1306" : T.mutedDim, fontSize: 15, fontWeight: 700 }}>CONFIRM</button>
-                    {!canConfirm && <div style={{ textAlign: "center", color: T.error, fontSize: 11 }}>{askDorm ? "NAME YOUR CHARACTER AND CHOOSE A DORMITORY TO CONFIRM." : "NAME YOUR CHARACTER TO CONFIRM."}</div>}
+                    {!canConfirm && <div style={{ textAlign: "center", color: T.error, fontSize: 12 }}>{askDorm ? "NAME YOUR CHARACTER AND CHOOSE A DORMITORY TO CONFIRM." : "NAME YOUR CHARACTER TO CONFIRM."}</div>}
                 </div>}
             </main>
         </div>
 
-        <footer style={{ flex: "none", height: 44, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 26px", borderTop: `1px solid ${T.goldLineSoft}`, background: "#0c0906", fontFamily: T.mono, fontSize: 10, color: T.mutedDim }}><span>HogwartsMP</span><span>A / D · ROTATE &nbsp;&nbsp; ESC · CANCEL</span></footer>
+        <footer style={{ flex: "none", height: 44, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 26px", borderTop: `1px solid ${T.goldLineSoft}`, background: T.panelAlt, fontFamily: T.mono, fontSize: 12, color: T.mutedDim }}><span>HMP Foundations</span><span>A / D · ROTATE &nbsp;&nbsp; ESC · CANCEL</span></footer>
         {importOpen && <ImportDialog busy={importBusy} error={importError} onClose={() => { if (!importBusy) setImportOpen(false); }} onImport={(look) => { importPending.current = true; setImportBusy(true); setImportError(""); bridge.importLook(look); }} />}
     </div>;
 }
