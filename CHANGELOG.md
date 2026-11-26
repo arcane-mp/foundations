@@ -13,6 +13,16 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   each resource keeps shipping its own copy. `hmp-ui`, `hmp-characters` and `hmp-inventory` now take their
   fonts from it instead of three identical copies; their builds produce the same files as before.
 
+### Changed
+
+- `hmp-spawn`, `hmp-emotes`, `hmp-inventory`, `hmp-characters` and `hmp-business` draw with the Arcanum
+  tokens. Each page links its own `arcanum/tokens.css`, so Cinzel and Spectral now load everywhere (the
+  emote menu fetched them from Google Fonts and the business panel from `hmp-ui`). Labels no longer drop
+  below 12px, the gold tones come from one scale, every control shows a focus ring, and animations stop
+  when the player asks for reduced motion. Selected rows are marked with a tint instead of a side bar.
+- The inventory footer sits in its own bar under the grid, and stack counts no longer cover item names.
+- Inventory cards can be selected with the keyboard.
+
 ### Fixed
 
 - `hmp-core` releases a character whose player disconnects while it is loading. The disconnect ran before

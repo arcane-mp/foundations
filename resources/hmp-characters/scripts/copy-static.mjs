@@ -1,10 +1,10 @@
 import { copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { copyArcanumFonts } from "../../../scripts/arcanum.mjs";
+import { copyArcanum } from "../../../scripts/arcanum.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(path.join(root, "dist"), { recursive: true });
 await copyFile(path.join(root, "client", "index.html"), path.join(root, "dist", "index.html"));
 await copyFile(path.join(root, "client", "creator.html"), path.join(root, "dist", "creator.html"));
-await copyArcanumFonts(root);
+await copyArcanum(root);

@@ -7,28 +7,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="arcanum/tokens.css" />
     <style>
-      @font-face { font-family: "Cinzel"; src: url("./fonts/Cinzel-Variable.ttf") format("truetype"); font-style: normal; font-weight: 400 900; font-display: swap; }
-      @font-face { font-family: "Spectral"; src: url("./fonts/Spectral-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
       :root {
-        --window: #15120c; --card: #16120b; --well: #0e0b07;
-        --accent: #c9a25a; --bright: #d8b56b;
-        --heading: #f0e3c2; --body: #d5c8a9; --muted: #9c8f74;
-        --danger: #e0655a; --hair: rgba(201, 162, 90, 0.14);
-        --cinzel: "Cinzel", Georgia, serif;
-        --spectral: "Spectral", Georgia, serif;
+        --window: var(--arc-surface-window); --card: var(--arc-surface-window); --well: var(--arc-surface-field);
+        --accent: var(--arc-gold-500); --bright: var(--arc-gold-400);
+        --heading: var(--arc-text-heading); --body: var(--arc-text-body); --muted: var(--arc-text-muted);
+        --danger: var(--arc-danger); --hair: var(--arc-line);
+        --cinzel: var(--arc-font-display);
+        --spectral: var(--arc-font-body);
       }
       * { box-sizing: border-box; }
+      button:focus-visible, textarea:focus-visible, .card:focus-visible { outline: none; box-shadow: var(--arc-focus-ring); }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation-duration: 0s !important; } }
       html, body { margin: 0; height: 100%; overflow: hidden; }
       body {
         display: grid; place-items: center; font-family: var(--spectral); color: var(--body);
         background: radial-gradient(1100px 700px at 50% 20%, rgba(201, 162, 90, 0.07), transparent 62%), rgba(6, 5, 3, 0.82);
       }
       #shell { width: min(1100px, 92vw); max-height: 88vh; display: flex; flex-direction: column; align-items: center; }
-      .eyebrow { font-family: var(--cinzel); font-size: 10px; letter-spacing: 0.32em; color: #b89a64; text-transform: uppercase; }
+      .eyebrow { font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.32em; color: var(--arc-gold-500); text-transform: uppercase; }
       h1 { font-family: var(--cinzel); font-weight: 600; font-size: 28px; letter-spacing: 0.06em; color: var(--heading); margin: 8px 0 4px; }
       .hint { font-size: 13px; color: var(--muted); margin: 0; }
-      #slots { margin: 6px 0 20px; color: #6f654f; font-family: var(--cinzel); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; }
+      #slots { margin: 6px 0 20px; color: var(--arc-text-muted); font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.18em; text-transform: uppercase; }
 
       #grid {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px;
@@ -43,6 +44,7 @@
         cursor: pointer; transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
       }
       .card:hover, .card:focus-visible { transform: translateY(-3px); border-color: rgba(201, 162, 90, 0.45); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55); outline: none; }
+      .card:focus-visible { box-shadow: var(--arc-focus-ring), 0 18px 40px rgba(0, 0, 0, 0.55); }
       .card.active { border-color: var(--accent); }
       .shot { position: relative; aspect-ratio: 1 / 1; background: var(--well); display: grid; place-items: center; }
       .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -51,18 +53,18 @@
         border-radius: 50%; animation: spin 0.9s linear infinite;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
-      .initials { font-family: var(--cinzel); font-size: 30px; color: #5e553f; letter-spacing: 0.08em; }
+      .initials { font-family: var(--cinzel); font-size: 30px; color: var(--arc-gold-700); letter-spacing: 0.08em; }
       .badge {
-        position: absolute; z-index: 2; top: 8px; right: 8px; font-family: var(--cinzel); font-size: 9px;
-        letter-spacing: 0.18em; text-transform: uppercase; color: #1a1306; background: var(--bright);
+        position: absolute; z-index: 2; top: 8px; right: 8px; font-family: var(--cinzel); font-size: var(--arc-text-xs);
+        letter-spacing: 0.18em; text-transform: uppercase; color: var(--arc-on-gold); background: var(--bright);
         border-radius: 3px; padding: 3px 7px;
       }
-      .badge.last { color: #cbbfa4; background: #4a4335; }
+      .badge.last { color: var(--arc-text-heading); background: var(--arc-surface-track); }
       .name {
         font-family: var(--cinzel); font-size: 14px; letter-spacing: 0.04em; color: var(--heading);
         padding: 12px 14px 4px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
-      .slot { padding: 0 14px 12px; color: #716750; font-family: var(--cinzel); font-size: 8px; letter-spacing: 0.16em; text-align: center; text-transform: uppercase; }
+      .slot { padding: 0 14px 12px; color: var(--arc-text-muted); font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.12em; text-align: center; text-transform: uppercase; }
       .del {
         position: absolute; z-index: 3; top: 6px; left: 6px; font-family: var(--cinzel); font-size: 12px; line-height: 1;
         color: var(--muted); background: rgba(12, 10, 6, 0.72); border: 1px solid var(--hair); border-radius: 3px;
@@ -72,7 +74,7 @@
       .del:hover, .del.armed { color: var(--danger); border-color: rgba(224, 101, 90, 0.6); }
       .del.armed { letter-spacing: 0.1em; }
       .export, .import {
-        position: absolute; z-index: 3; right: 8px; bottom: 8px; font-family: var(--cinzel); font-size: 9px;
+        position: absolute; z-index: 3; right: 8px; bottom: 8px; font-family: var(--cinzel); font-size: var(--arc-text-xs);
         letter-spacing: 0.12em; text-transform: uppercase; color: var(--body); background: rgba(12, 10, 6, 0.82);
         border: 1px solid var(--hair); border-radius: 3px; padding: 6px 8px; cursor: pointer;
         transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
@@ -80,7 +82,7 @@
       .export { opacity: 0; }
       .card:hover .export, .export:focus-visible { opacity: 1; }
       .export:hover, .export:focus-visible, .import:hover, .import:focus-visible { color: var(--heading); border-color: rgba(201, 162, 90, 0.58); outline: none; }
-      .export:disabled { cursor: wait; color: #655d4b; border-color: rgba(201, 162, 90, 0.08); }
+      .export:disabled { cursor: wait; color: var(--arc-text-disabled); border-color: rgba(201, 162, 90, 0.08); }
 
       .card.new { border-style: dashed; border-color: rgba(201, 162, 90, 0.3); background: transparent; }
       .card.new .shot { background: rgba(201, 162, 90, 0.03); }
@@ -89,7 +91,7 @@
 
       #empty { font-size: 14px; color: var(--muted); text-align: center; padding: 8px 0 20px; }
       #close {
-        margin-top: 4px; font-family: var(--cinzel); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+        margin-top: 4px; font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.2em; text-transform: uppercase;
         color: var(--muted); background: none; border: 0; cursor: pointer; padding: 8px 12px;
       }
       #close:hover, #close:focus-visible { color: var(--heading); outline: none; }
@@ -106,16 +108,16 @@
       .dialog-title { font-family: var(--cinzel); font-size: 19px; color: var(--heading); letter-spacing: 0.05em; }
       .dialog-help { margin: -8px 0 0; color: var(--muted); font-size: 13px; }
       .json-field {
-        width: 100%; min-height: 320px; resize: vertical; padding: 14px; color: #d9cba9; background: #0b0906;
+        width: 100%; min-height: 320px; resize: vertical; padding: 14px; color: var(--arc-text-body); background: var(--arc-surface-field);
         border: 1px solid var(--hair); border-radius: 4px; outline: none; font: 12px/1.5 ui-monospace, monospace;
       }
       .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
       .dialog-actions button {
-        padding: 9px 13px; color: var(--body); background: #100d08; border: 1px solid var(--hair);
-        border-radius: 4px; font-family: var(--cinzel); font-size: 10px; letter-spacing: 0.12em; cursor: pointer;
+        padding: 9px 13px; color: var(--body); background: var(--arc-surface-panel); border: 1px solid var(--hair);
+        border-radius: 4px; font-family: var(--cinzel); font-size: var(--arc-text-xs); letter-spacing: 0.12em; cursor: pointer;
       }
       .dialog-actions button:hover, .dialog-actions button:focus-visible { color: var(--heading); border-color: rgba(201, 162, 90, 0.55); outline: none; }
-      .dialog-actions .primary { color: #1a1306; background: var(--bright); border-color: var(--bright); }
+      .dialog-actions .primary { color: var(--arc-on-gold); background: var(--bright); border-color: var(--bright); }
       .dialog-status { flex: 1; color: var(--muted); font-size: 12px; }
       [hidden] { display: none !important; }
     </style>
