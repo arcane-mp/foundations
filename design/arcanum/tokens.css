@@ -1,0 +1,127 @@
+/*
+ * Arcanum design tokens for HMP Foundations.
+ *
+ * One source for every Foundations screen. Each resource's build copies this folder into its own dist/arcanum/,
+ * so a resource never loads styles or fonts from another resource at runtime.
+ *
+ * Usage in a resource page:
+ *   <link rel="stylesheet" href="arcanum/tokens.css">
+ *
+ * All tokens are prefixed --arc- so they never collide with a page's own variables.
+ * Contrast figures are WCAG ratios against --arc-surface-window (#15120c), the usual panel colour.
+ */
+
+@font-face {
+    font-family: "Cinzel";
+    src: url("fonts/Cinzel-Variable.ttf") format("truetype");
+    font-weight: 400 900;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Spectral";
+    src: url("fonts/Spectral-Regular.ttf") format("truetype");
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Spectral";
+    src: url("fonts/Spectral-SemiBold.ttf") format("truetype");
+    font-weight: 600;
+    font-display: swap;
+}
+
+:root {
+    color-scheme: dark;
+
+    /* Gold: one scale replaces #c9a25a, #d8b56b, #c19a4e, #b89a64, #d6b36f and #c9a227. */
+    --arc-gold-300: #e6cc94; /* highlight on gold surfaces, 11.95:1 */
+    --arc-gold-400: #d8b56b; /* hover, focus ring, active text, 9.56:1 */
+    --arc-gold-500: #c9a25a; /* the accent: primary buttons, selection, icons, 7.83:1 */
+    --arc-gold-600: #a8843f; /* pressed, strong borders, 5.37:1 */
+    --arc-gold-700: #6e5628; /* decorative rules only, never text, 2.69:1 */
+    --arc-on-gold: #1a1306; /* text on gold-500, 7.72:1 */
+
+    /* Lines are gold-500 at fixed strengths. */
+    --arc-line-strong: rgba(201, 162, 90, 0.3);
+    --arc-line: rgba(201, 162, 90, 0.14);
+    --arc-line-soft: rgba(201, 162, 90, 0.08);
+
+    /* Surfaces, darkest first. */
+    --arc-surface-base: #0a0805; /* full-screen backgrounds */
+    --arc-surface-field: #0e0b07; /* inputs, wells, slots */
+    --arc-surface-panel: #100d08; /* side rails, nav */
+    --arc-surface-window: #15120c; /* dialogs and main panels */
+    --arc-surface-raised: #1c170e; /* hover, raised cards */
+    --arc-surface-track: #2a241a; /* slider and progress tracks */
+    --arc-scrim: rgba(6, 5, 3, 0.62); /* dims the game behind a modal */
+
+    /* Text. Every text token passes 4.5:1 on every surface above. */
+    --arc-text-heading: #f0e3c2; /* 14.66:1 */
+    --arc-text-body: #d5c8a9; /* 11.27:1 */
+    --arc-text-data: #c2b291; /* values, secondary lines, 8.96:1 */
+    --arc-text-muted: #9c8f74; /* hints, captions, 5.87:1 */
+    --arc-text-disabled: #6f6553; /* disabled controls only (exempt from contrast), 3.26:1 */
+
+    /* Status. Never colour alone: pair with an icon or a word. */
+    --arc-success: #a3bd82; /* 9.04:1 */
+    --arc-warning: #e09a52; /* moved off the gold hue so it reads as a warning, 7.93:1 */
+    --arc-danger: #e06d5c; /* replaces #d2876e and #e0655a, 5.79:1 */
+    --arc-info: #92b6c0; /* 8.61:1 */
+
+    /* Type. Cinzel for titles, labels and buttons; Spectral for reading text. Nothing below 12px. */
+    --arc-font-display: "Cinzel", Georgia, serif;
+    --arc-font-body: "Spectral", Georgia, serif;
+    --arc-font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --arc-text-xs: 12px; /* eyebrows, badges, keycaps */
+    --arc-text-sm: 13px; /* captions, metadata */
+    --arc-text-md: 15px; /* body, inputs */
+    --arc-text-lg: 18px; /* section titles */
+    --arc-text-xl: 23px; /* dialog titles */
+    --arc-text-2xl: 30px; /* screen titles */
+    --arc-text-display: 46px; /* banners, results */
+    --arc-leading-tight: 1.2;
+    --arc-leading-body: 1.5;
+    --arc-tracking-caps: 0.08em; /* Cinzel small labels */
+
+    /* Space: 4px steps. */
+    --arc-space-1: 4px;
+    --arc-space-2: 8px;
+    --arc-space-3: 12px;
+    --arc-space-4: 16px;
+    --arc-space-5: 20px;
+    --arc-space-6: 24px;
+    --arc-space-8: 32px;
+    --arc-space-10: 40px;
+    --arc-space-12: 48px;
+
+    /* Corners: replaces 2-7px. */
+    --arc-radius-sm: 3px; /* chips, keycaps, checkboxes */
+    --arc-radius-md: 5px; /* buttons, inputs, slots */
+    --arc-radius-lg: 7px; /* windows */
+    --arc-radius-pill: 999px;
+
+    /* Elevation. */
+    --arc-shadow-raised: 0 6px 18px rgba(0, 0, 0, 0.4);
+    --arc-shadow-window: 0 30px 80px rgba(0, 0, 0, 0.62), inset 0 1px rgba(201, 162, 90, 0.08);
+    --arc-shadow-gold: 0 6px 18px rgba(201, 162, 90, 0.22); /* primary button glow */
+    --arc-focus-ring: 0 0 0 2px var(--arc-surface-window), 0 0 0 4px var(--arc-gold-400);
+
+    /* Motion. Exits run shorter than entrances. */
+    --arc-duration-fast: 80ms; /* press feedback */
+    --arc-duration-base: 120ms; /* hover, small state changes */
+    --arc-duration-slow: 200ms; /* panels and toasts entering */
+    --arc-duration-exit: 140ms;
+    --arc-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --arc-ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --arc-duration-fast: 0ms;
+        --arc-duration-base: 0ms;
+        --arc-duration-slow: 0ms;
+        --arc-duration-exit: 0ms;
+    }
+}
