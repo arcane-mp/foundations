@@ -411,7 +411,8 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
             || (config.minPayoutKillers > 0 && new Set(killers).size >= config.minPayoutKillers);
         const fought = match.rounds.some((round) => realRound(round.durationMs, round.killers));
         if (!stoppedEarly && fought && ids.length) {
-            for (const house of houses) {
+            // houses() keeps a house whose fighters all left, for the score; only houses still fighting at the end are paid.
+            for (const house of match.contenders()) {
                 const amount = config.housePoints.participation + (house === winner ? config.housePoints.win : 0);
                 if (amount <= 0) continue;
                 const reference = `${RESOURCE}:${battle.sessionId}:${house}`;

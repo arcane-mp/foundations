@@ -31,7 +31,8 @@ an `hmp-duels` loser kneels.
    round fighters keep the health they have.
 6. The match ends when a house has won most of the `rounds`, when only one house has fighters left,
    or after the last round. The winner gets `housePoints.win` plus `housePoints.participation`, and
-   every other house that fought gets `housePoints.participation`. Points are paid only after a round
+   every other house that still has a fighter in the match at the end gets `housePoints.participation`;
+   a house whose fighters all left gets nothing. Points are paid only after a round
    that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters, so a quick
    single knock-out, a fall, or a match of forfeits alone pays nobody. The cooldown of
    `housePointsCooldownSeconds` applies to the same house and the same group of fighters, and a house

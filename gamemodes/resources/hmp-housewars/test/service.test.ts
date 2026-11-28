@@ -211,6 +211,26 @@ test("a house whose fighters leave forfeits; retiring keeps the activity until t
     await service.stop();
 });
 
+test("a house whose only fighter leaves after a real round gets no points", async () => {
+    const context = setup({ minPayoutKillers: 1 });
+    const { time, players: [p1, , , , p5], service, awards, finished } = context;
+    await lobby(context, [1, 3, 5]);
+    await service.start(p1);
+    time.advance(3000);
+    service.defeated(3, 1);
+    service.defeated(5, 1);
+    assert.ok(p1.said.some((line) => /Gryffindor takes round 1 by elimination/.test(line)));
+    assert.strictEqual(await service.leave(p5), true, "Ravenclaw's only fighter leaves in the intermission");
+    time.advance(5000 + 3000);
+    service.defeated(3, 1);
+    await tick();
+    assert.strictEqual(finished.length, 1);
+    assert.deepStrictEqual(finished[0].houses, ["gryffindor", "ravenclaw", "slytherin"], "Ravenclaw is still on the record");
+    assert.deepStrictEqual(awards.map(([house, amount]) => [house, amount]), [["gryffindor", 60], ["slytherin", 10]]);
+    assert.deepStrictEqual(finished[0].housePoints, { gryffindor: 60, slytherin: 10 });
+    await service.stop();
+});
+
 test("a retired fighter who then disconnects is announced once", async () => {
     const context = setup();
     const { time, players: [p1, , p3], service, activities, finished } = context;

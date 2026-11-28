@@ -17,8 +17,8 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   round ends. A round goes to the last house standing, or to the one with the most fighters up when time
   runs out. Health recovery runs only between rounds. Fighters who leave are out of the match, so the
   battle's PvP rule no longer covers them, but the finished event still lists them with `left: true`, and
-  kneeling fighters stand up when released. The winning house earns `housePoints.win`
-  and every house that fought `housePoints.participation` through the `hmp-houses` ledger, but only after
+  kneeling fighters stand up when released. The winning house earns `housePoints.win` and every house
+  with a fighter left at the end `housePoints.participation` through the `hmp-houses` ledger, but only after
   a round that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters. The
   cooldown applies to the same house and the same group of fighters, and a daily cap limits each house;
   both come from the ledger's history, so they survive a restart. Every match that started raises
