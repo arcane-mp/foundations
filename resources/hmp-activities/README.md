@@ -115,8 +115,12 @@ backfill through its own rules, or cancel.
 Registration is owner-scoped. Stopping a gameplay resource unregisters its definitions and cancels
 their sessions. The disposer returned by `definitions.register()` provides the same cleanup explicitly.
 
-Owner hooks receive snapshots and should start or clean up gameplay state. `canCreate` and `canJoin`
-are awaited gates; return `false` or a player-facing string to deny the action. Lifecycle hooks are
+Owner hooks receive snapshots and should start or clean up gameplay state. `canCreate`, `canJoin` and
+`canStart` are awaited gates; return `false` or a player-facing string to deny the action. `canStart`
+runs after the player, role, team and readiness checks pass. Its `player` is the actor who asked, or the
+leader when an owner API starts the session without one, and its `resource` is the resource the owner
+context named, so a gameplay resource can refuse `/activities start` and still start the session through
+its own `sessions.start(id, { resource })`. A denied start leaves the session forming. Lifecycle hooks are
 best-effort notifications and errors are logged without rolling back an already committed session
 transition.
 
