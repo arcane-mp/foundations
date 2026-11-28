@@ -6,9 +6,11 @@
   "duplicateSessionMinimumGrade": 1,
   "kickDuplicateSession": false,
   "identityOrder": [
+    "accountId",
     "steamId",
     "discordId",
-    "hardwareId"
+    "hardwareId",
+    "epicId"
   ],
   "tickets": {
     "required": false,

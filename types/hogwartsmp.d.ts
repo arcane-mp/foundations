@@ -311,9 +311,13 @@ declare global {
         house?: "Gryffindor" | "Hufflepuff" | "Ravenclaw" | "Slytherin" | "Unaffiliated";
         /** Other houses' common rooms this player may enter besides their own; assign [] to take it away. Throws once disconnected. */
         commonRooms?: Array<"Gryffindor" | "Hufflepuff" | "Ravenclaw" | "Slytherin">;
+        /** The host's account ID, signed with that account's key; not client-reported. */
+        accountId?: string;
         steamId?: string;
         discordId?: string;
         hardwareId?: string;
+        /** Client-reported Epic Games account ID; a linked identifier, not proof of ownership. */
+        epicId?: string;
         ping?: number;
         ip?: string;
         inventory?: HogwartsMpNativeInventory;
@@ -507,8 +511,10 @@ declare global {
         readonly target: string | null;
     }
 
-    /** A player asking to join, handed to `playerConnecting`; every field but `ticket` is client-reported. */
+    /** A player asking to join, handed to `playerConnecting`; every field but `ticket` and `accountId` is client-reported. */
     interface HogwartsMpPendingConnection {
+        /** The host's account ID, signed with that account's key; absent on hosts that do not supply it. */
+        readonly accountId?: string;
         readonly nickname: string;
         readonly steamId: string;
         readonly epicId: string;
