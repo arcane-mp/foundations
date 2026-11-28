@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  hmp-racing HUD, driven by dist/client.js:
+    native -> page : Web.emit(view, "hud:update", HudState)  (see shared/types.ts)
+    page -> native : callEvent("ready", "{}")
+  The race clock counts on here from the last elapsedMs the server sent; the server's own times are authoritative.
+-->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    /* An overlay: a focused CEF view holds the cursor and locks controls mid-flight. */
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+      pointer-events: none; -webkit-user-select: none; user-select: none; }
+    #hud {
+      position: fixed; top: 16px; right: 16px; min-width: 176px;
+      background: rgba(16, 13, 8, 0.60);
+      border: 1px solid rgba(201, 162, 90, 0.35); border-radius: 6px;
+      padding: 8px 12px 9px; color: #d5c8a9;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.40); backdrop-filter: blur(2px);
+      opacity: 0; transform: translateY(-4px); transition: opacity .25s ease, transform .25s ease;
+    }
+    #hud.show { opacity: 1; transform: none; }
+    #hud .title { font-family: 'Cinzel', Georgia, serif; font-size: 12px; letter-spacing: .16em;
+      text-transform: uppercase; color: #c19a4e; margin-bottom: 6px; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    #hud .place { font-family: 'Cinzel', Georgia, serif; font-size: 26px; color: #f0e3c2; line-height: 1; }
+    #hud .place small { font-size: 12px; color: #9c8f74; }
+    #hud .rows { display: flex; gap: 13px; margin-top: 6px; }
+    #hud .cell .k { font-family: Georgia, serif; font-size: 12px; letter-spacing: .08em;
+      text-transform: uppercase; color: #9c8f74; }
+    #hud .cell .v { font-family: Consolas, 'Courier New', monospace; font-size: 15px;
+      color: #f0e3c2; line-height: 1.15; }
+    #hud .foot { margin-top: 6px; font-family: Consolas, 'Courier New', monospace; font-size: 12px; color: #9c8f74; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="title" id="track">Broom race</div>
+    <div class="place" id="place">–</div>
+    <div class="rows">
+      <div class="cell"><div class="k">Lap</div><div class="v" id="lap">–</div></div>
+      <div class="cell"><div class="k">Gate</div><div class="v" id="gate">–</div></div>
+      <div class="cell"><div class="k">Time</div><div class="v" id="time">0:00.000</div></div>
+    </div>
+    <div class="foot" id="foot"></div>
+  </div>
+  <script>
+    var hud = document.getElementById('hud');
+    var state = null, base = 0, received = 0, timer = null;
+    function format(ms) {
+      ms = Math.max(0, Math.round(ms));
+      var m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000), x = ms % 1000;
+      return m + ':' + (s < 10 ? '0' : '') + s + '.' + (x < 10 ? '00' : x < 100 ? '0' : '') + x;
+    }
+    function suffix(n) {
+      var t = n % 100;
+      if (t >= 11 && t <= 13) return 'th';
+      return ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
+    }
+    function clock() {
+      if (!state) return;
+      var running = state.phase === 'racing';
+      document.getElementById('time').textContent = format(running ? base + (Date.now() - received) : base);
+    }
+    function render(data) {
+      if (!data || !data.active) { state = null; hud.classList.remove('show'); if (timer) { clearInterval(timer); timer = null; } return; }
+      state = data; base = data.elapsedMs || 0; received = Date.now();
+      document.getElementById('track').textContent = data.track;
+      document.getElementById('place').innerHTML = data.phase === 'countdown' ? 'Ready'
+        : data.phase === 'out' ? 'Out'
+        : data.place + '<small>' + suffix(data.place) + ' / ' + data.racers + '</small>';
+      document.getElementById('lap').textContent = data.lap + '/' + data.laps;
+      document.getElementById('gate').textContent = data.checkpoint + '/' + data.checkpoints;
+      var foot = [];
+      if (data.lastLapMs) foot.push('last lap ' + format(data.lastLapMs));
+      if (data.recordMs) foot.push('record ' + format(data.recordMs));
+      document.getElementById('foot').textContent = foot.join(' · ');
+      clock();
+      if (!timer) timer = setInterval(clock, 50);
+      hud.classList.add('show');
+    }
+    window.addEventListener('hud:update', function (event) { render(event.detail); });
+    if (typeof callEvent === 'function') callEvent('ready', '{}');
+  </script>
+</body>
+</html>

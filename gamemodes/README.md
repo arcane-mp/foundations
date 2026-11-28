@@ -9,6 +9,7 @@ Each one lives in `resources/` here and has a row below.
 |---|---|
 | [`hmp-gauntlet`](resources/hmp-gauntlet) | Cooperative wave survival: a party fights randomized, escalating waves of native enemies for ranked leaderboards. Built on activities, NPCs, interactions and worldstate. |
 | [`hmp-quidditch`](resources/hmp-quidditch) | Quidditch on the Hogwarts pitch: called matches with house lineups, practice and Snitch hunts. Built on activities, houses, UI, input, inventory, audio, blips and world policy. |
+| [`hmp-racing`](resources/hmp-racing) | Broom races through server-checked checkpoint courses, built in game by flying them, with grids, laps, track records and personal bests. Built on activities, worldstate and core. |
 
 ## Versioning
 
