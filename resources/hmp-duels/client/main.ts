@@ -54,6 +54,11 @@ Events.on("hmp-duels:end", (raw: unknown) => {
     if (result === "lose") Game.notify(`Defeated — ${opponent} wins`);
     else Game.notify(result === "win" ? `Victory over ${opponent}!` : `Duel ended: ${String(payload.reason || result)}`);
 });
+// The ranking answers after the duel's end, once its rating change is stored.
+Events.on("hmp-duels:rated", (raw: unknown) => {
+    const note = String(parse(raw).note || "");
+    if (note) Game.notify(note);
+});
 // The server holds it from the countdown until the duel ends, however it ends.
 Events.on("hmp-duels:dodge", (raw: unknown) => { setDodge(parse(raw).enabled !== false); });
 Events.on("resourceStop", (name?: string) => { if (!name || name === "hmp-duels") reset(); });

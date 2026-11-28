@@ -3,9 +3,13 @@ export type HmpCoreTrust = "asserted" | "verified" | string;
 export interface HmpCorePlayer {
     id: number;
     nickname?: string;
+    /** The host's account ID, signed with that account's key. Ranks above every client-reported ID. */
+    accountId?: string;
     steamId?: string;
     discordId?: string;
     hardwareId?: string;
+    /** A client-reported Epic Games account ID; a linked identifier, never proof of ownership. */
+    epicId?: string;
     kick?(reason?: string): void;
 }
 
@@ -115,10 +119,12 @@ export interface HmpCoreMetadataApi {
     deleteCharacter(characterId: number, key: string): Promise<boolean>;
 }
 
-/** A join a ticket redeemer is asked about, before the player takes a slot. Only `ticket` is not client-reported. */
+/** A join a ticket redeemer is asked about, before the player takes a slot. `ticket` and `accountId` are not client-reported. */
 export interface HmpCoreTicketConnection {
     /** The `ticket` of the `hogwartsmp://` link the player joined with; never empty when a redeemer is asked. */
     readonly ticket: string;
+    /** The host's account ID, signed with that account's key; absent on hosts that do not supply it. */
+    readonly accountId?: string;
     readonly nickname: string;
     readonly steamId: string;
     readonly epicId: string;

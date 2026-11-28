@@ -92,8 +92,10 @@ function createTickets(options: TicketOptions) {
         if (!redeemers.size && !enforce) return null;
         const at = now();
         sweep(at);
+        const accountId = text(connection.accountId);
         const details: HmpCoreTicketConnection = Object.freeze({
             ticket: text(connection.ticket),
+            ...(accountId ? { accountId } : {}),
             nickname: text(connection.nickname),
             steamId: text(connection.steamId),
             epicId: text(connection.epicId),

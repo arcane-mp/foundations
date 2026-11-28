@@ -32,14 +32,76 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 - `hmp-houses` `points.history(house, limit, filter)` takes an optional `{ resource, since }` filter, and
   `points.total(house, filter)` sums a house's rows that did not fail with no row limit. `since` is measured
   as an age on the database's clock, so the MySQL session time zone does not shift it.
+- `hmp-core` identifies players by the host's proven `player.accountId` on hosts that supply it, stored
+  as `host-account` with `verified` trust. When a player brings one, only that ID picks their account:
+  client-reported Steam, Epic Games, Discord and hardware IDs are linked to it only when no other account
+  holds them, and one another account holds is logged as shared and left there. Without `accountId` the
+  client-reported IDs decide the account as before, `asserted`. The client-reported Epic Games account ID
+  (32 hexadecimal digits, stored lowercase) is a linked identifier, `client-epic`, ranked below
+  `hardwareId` in the default `identityOrder` `["accountId", "steamId", "discordId", "hardwareId",
+  "epicId"]`. A server with its own `data/hmp-core.json` or `HMP_CORE_IDENTITY_ORDER` adds `accountId`
+  and moves `epicId` last to keep this behaviour.
+- Accounts made before the host supplied `accountId` hold no `host-account` and are not adopted
+  automatically, since their client-reported IDs cannot show who owns them. Their players get a new
+  account on their first join with an account ID. A server owner moves a confirmed player back to the
+  old account with `accounts.linkIdentity` or one MySQL update, as the `hmp-core` readme describes.
+- The `hmp-expeditions` gamemode: cooperative expeditions. A party (`/expedition host <id>`, `join`,
+  `start`) gathers at an expedition's entrance and fights through its stages in order. Each stage spawns a
+  pack of native enemies through `hmp-npcs`, and the last can hold a boss. Packs grow and bosses toughen
+  for every fighter past the first, and enemy ownership rotates across the party. Each fighter sees the
+  current fight as a ground ring and a HUD with stage, foes and time left. The boss spawns first, and a
+  stage that falls short of its orders fails the run, with no experience and no record. Clearing the last
+  stage pays fighters still within `rewardRadius` (40 m by default) of the fight `experience` through
+  `hmp-progression`, after a cooldown read from reward history, and keeps the fastest clear as the server
+  record. A wipe, a vanished enemy, a failed instance, the time limit or `/expedition stop` fails or ends
+  the run, and whatever enemies remain are removed. Standing enemies are checked every two seconds, and one
+  gets five seconds for its `npcDied` before it counts as vanished; a stage with no free `hmp-npcs` slot
+  fails the run. `maxEnemiesPerStage` defaults to 24 and each stage stops at the slots free in `hmp-npcs`;
+  a run with a stage cut that way still pays but sets no record. With `instanced: true`, each run takes a
+  virtual world of its own; the shared-world fallback only detects a host that throws when its player
+  world is written, since a plain property read back always matches.
+  Editors build expeditions in game (`/expedition edit new`, `stage <enemy> [xN]... [boss <enemy> [health]]`,
+  `save`), stored in `hmp-worldstate` one key per stage, or list them in `data/hmp-expeditions.json`.
+  Every run that started, including one stopped by the resource, raises `hmp-expeditions:finished`.
 - `design/arcanum` is the single source of the Arcanum look: `tokens.css` (colour, type, space, corners,
   elevation and motion as `--arc-*` properties) and the Cinzel and Spectral fonts with their OFL licences.
   Spectral SemiBold joins Spectral Regular. `scripts/arcanum.mjs` copies it into a resource's `dist/`, so
   each resource keeps shipping its own copy. `hmp-ui`, `hmp-characters` and `hmp-inventory` now take their
   fonts from it instead of three identical copies; their builds produce the same files as before.
+- The `hmp-racing` gamemode: broom races through checkpoint courses. A host opens a race lobby with
+  `/race host <track>`, others `/race join`, and `/race start` puts everyone on a grid, holds them through
+  a countdown, and turns their fast travel off until the race ends. The server samples every racer's
+  position and judges each gate along the path between samples, lap by lap, so no client reports its own
+  progress. A first sample over `maxSpeedCmPerSecond` keeps the last good position and passes no gates,
+  and a teleport stays over the limit and disqualifies on the second sample. A stalled position that
+  repeats the last one does not move the clock, so the catch-up after lag is measured over the whole
+  stall. The first finisher starts a grace period for the rest. Racers see their next gates as shapes and
+  a HUD with place, lap, gate and time. Editors build tracks in game by flying them
+  (`/race edit new`, `point`, `save`), stored in `hmp-worldstate` one key per gate, or list them in
+  `data/hmp-racing.json`. Personal bests are kept for every finished run; the track record is only taken
+  from ranked runs. `minimumRacers` sets how many racers must have finished or still be flying when the
+  first one crosses the line for the run to be ranked, so one who leaves or falls out before then does not
+  count and one who quits during the grace period cannot unrank the winner; every race raises
+  `hmp-racing:finished` with its results and `ranked` flag.
+- `hmp-duels` ranks duelists. Every duel that began and has a winner is recorded against both duelists'
+  characters, captured as the countdown starts, in `hmp_duel_matches`; a knock-out, a forfeit or a
+  disconnect after the fight starts also moves an Elo rating in `hmp_duel_ratings` (1000 to start, K 48
+  for a character's first ten duels and 32 after, never below 100). A duel that ends before the fight, or
+  any way but a knock-out within its first three seconds, is left unrated. A pair past three rated duels
+  in an hour, or ten in 24 hours, plays the rest unrated; the count covers the two accounts as well as the
+  two characters, so rotating characters does not reset it. `hmp:duels:rated` leaves out the player id of
+  a duelist who no longer holds the character that fought, and soft-deleted characters drop out of
+  `rank`, `top` and `history`. Both duelists see their new rating, and `/duel rank [player]`,
+  `/duel top` and `/duel history [player]` read it in chat, as does the new `ranking` export for other
+  resources. `ranking` in `data/hmp-duels.json` sets every value or turns the ranking off; with it off no
+  database is imported at runtime, though the pack still requires hmp-mysql through hmp-core.
 
 ### Changed
 
+- On hosts that supply `accountId`, every player's `hmp-core` session is `verified`, so every player
+  passes `hmp-admin`'s `requireVerifiedIdentity` gate and the role groups in `roleRules` take effect for
+  them. A staff group set on an account made before then reaches its player again once the account is
+  moved to their account ID.
 - `hmp-ui` draws with the Arcanum tokens from its own `dist/arcanum/`; its layout and API are unchanged.
   A notification shows its tone with an icon of its own shape and a title in the tone's colour, instead of a
   coloured stripe alone, and a screen reader hears the tone. Warnings use `#e09a52`, which no longer reads as
@@ -59,6 +121,8 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ### Fixed
 
+- `hmp-core` bounds a malformed Epic Games account ID to 64 characters and escapes control characters
+  before logging it, so a client value cannot inject extra lines into the server log.
 - `hmp-ui` progress dialogs style their remaining time. The rule targeted `#progress-time` while the element
   carries the `progress-time` class, so it never applied.
 - An `hmp-ui` context option whose icon fails to load gives its text the full width. The icon column stayed,

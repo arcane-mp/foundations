@@ -1,23 +1,74 @@
 import serviceModule = require("./service");
+import rankingModule = require("./ranking");
+import ratingModule = require("./rating");
+import repositoryModule = require("./repository");
+import schemaModule = require("./schema");
+import type { HmpMySQL } from "../../hmp-mysql/types";
 import type { HmpActivities } from "../../hmp-activities/types";
 import type { HmpCore } from "../../hmp-core/types";
 import type { HmpLibServer } from "../../hmp-lib/types";
 import type { HmpPvp } from "../../hmp-pvp/types";
 import type { HmpUiServer } from "../../hmp-ui/types";
-import type { HmpDuelPlayer } from "../types";
+import type { HmpDuelMatchRecord, HmpDuelPlayer, HmpDuelRatedEvent, HmpDuelStanding } from "../types";
+import type { MatchDraft, RecordedDuel } from "./internal";
 
 const { createDuelService } = serviceModule;
+const { createRanking } = rankingModule;
+const { rankingConfig } = ratingModule;
+const { createRepository } = repositoryModule;
+const { migrations } = schemaModule;
 const Hmp = Imports.get<HmpLibServer<HmpDuelPlayer>>("hmp-lib");
 const core = Imports.get<HmpCore<HmpDuelPlayer>>("hmp-core");
 const activities = Imports.get<HmpActivities<HmpDuelPlayer>>("hmp-activities");
 const pvp = Imports.get<HmpPvp>("hmp-pvp");
 const ui = Imports.get<HmpUiServer<HmpDuelPlayer>>("hmp-ui");
 const logger = Hmp.logger.create("hmp-duels");
-const loaded = Hmp.config.load<{ command: string; enableCommands: boolean; countdownSeconds: number; invitationTtlSeconds: number; koHp: number; cosmeticGear: boolean; dodge: boolean } & Record<string, unknown>>(process.env.HMP_DUELS_CONFIG || "data/hmp-duels.json", { defaults: { command: "duel", enableCommands: true, countdownSeconds: 3, invitationTtlSeconds: 30, koHp: 1, cosmeticGear: false, dodge: true } });
+const loaded = Hmp.config.load<{ command: string; enableCommands: boolean; countdownSeconds: number; invitationTtlSeconds: number; koHp: number; cosmeticGear: boolean; dodge: boolean; ranking?: unknown } & Record<string, unknown>>(process.env.HMP_DUELS_CONFIG || "data/hmp-duels.json", { defaults: { command: "duel", enableCommands: true, countdownSeconds: 3, invitationTtlSeconds: 30, koHp: 1, cosmeticGear: false, dodge: true } });
 const command = String(loaded.command || "duel").trim().toLowerCase();
 const countdownSeconds = Math.max(1, Math.min(10, Math.floor(Number(loaded.countdownSeconds) || 3)));
 const invitationTtlSeconds = Math.max(10, Math.min(300, Math.floor(Number(loaded.invitationTtlSeconds) || 30)));
 const koHp = Math.max(1, Math.min(100, Number(loaded.koHp) || 1));
+const rankingSettings = rankingConfig(loaded.ranking);
+// An off ranking needs no database at all; hmp-mysql is imported only when there is something to store.
+const ranking = createRanking({ repository: rankingSettings.enabled ? createRepository(Imports.get<HmpMySQL>("hmp-mysql")) : null, migrations, config: rankingSettings });
+const rankingQueries = Hmp.rateLimit.create<number>({ limit: 5, windowMs: 5000 });
+const messageOf = (error: unknown): string => error instanceof Error ? error.message : String(error);
+const signed = (value: number): string => value >= 0 ? `+${value}` : String(value);
+
+function characterOf(id: number): { id: number; name: string; accountId?: number } | null {
+    try {
+        const character = core.characters?.active(id);
+        if (!character) return null;
+        const accountId = Number(character.accountId);
+        return { id: character.id, name: character.name, accountId: Number.isSafeInteger(accountId) && accountId > 0 ? accountId : undefined };
+    } catch (_) { return null; }
+}
+
+function announceRating(recorded: RecordedDuel, draft: MatchDraft): void {
+    const { match } = recorded;
+    // Player ids get reused: only a player still in the character that fought may still be named.
+    const winnerHeld = characterOf(draft.winner.playerId)?.id === match.winnerCharacterId;
+    const loserHeld = characterOf(draft.loser.playerId)?.id === match.loserCharacterId;
+    const payload: HmpDuelRatedEvent = {
+        match,
+        winnerPlayerId: winnerHeld ? draft.winner.playerId : null,
+        loserPlayerId: loserHeld ? draft.loser.playerId : null,
+        unrated: recorded.unrated,
+    };
+    Events.emit("hmp:duels:rated", payload);
+    for (const [side, held, change] of [[draft.winner, winnerHeld, match.winner], [draft.loser, loserHeld, match.loser]] as const) {
+        if (!held) continue;
+        const player = PlayerManager.getById(side.playerId);
+        if (!player) continue;
+        const note = change
+            ? `Duel rating ${change.after} (${signed(change.delta)})`
+            : recorded.unrated === "repeat" ? "Unrated: you have dueled this opponent often lately"
+                : recorded.unrated === "daily" ? "Unrated: daily duel limit reached with this opponent"
+                    : recorded.unrated === "early" ? "Unrated: the fight had not begun" : "Unrated duel";
+        player.emit("hmp-duels:rated", JSON.stringify({ rated: match.rated, rating: change?.after ?? null, delta: change?.delta ?? 0, note }));
+    }
+}
+
 const duels = createDuelService({
     activities, pvp, countdownSeconds, invitationTtlSeconds, koHp,
     player: (id) => PlayerManager.getById(id),
@@ -43,9 +94,51 @@ const duels = createDuelService({
     emit: (player, event, payload) => player.emit(event, JSON.stringify(payload)),
     notify: (player, message, tone = "inform") => { ui.notify(player, { title: "Wizard's duel", description: message, tone }); },
     warn: (message) => logger.warn(message),
+    // A duel without both characters is fought as before and left unrated.
+    character: (id) => characterOf(id),
+    finished: (draft) => {
+        ranking.record(draft).then((recorded) => { if (recorded) announceRating(recorded, draft); })
+            .catch((error) => logger.warn(`Could not rate duel '${draft.reference}': ${messageOf(error)}`));
+    },
 });
 
 for (const name of ["challenge", "accept", "decline", "cancel", "forfeit", "status"] as const) Exports.register(name, duels[name]);
+Exports.register("ranking", Object.freeze({
+    standing: ranking.standing, leaderboard: ranking.leaderboard, history: ranking.history, status: ranking.status, config: ranking.config,
+}));
+
+function describeStanding(standing: HmpDuelStanding | null, fallbackName: string): string {
+    if (!standing || !standing.matches) return `${fallbackName} has no rated duels yet`;
+    const streak = standing.streak > 1 ? `, ${standing.streak} wins in a row` : standing.streak < -1 ? `, ${-standing.streak} losses in a row` : "";
+    const rank = standing.rank ? `#${standing.rank}` : "unranked";
+    return `${standing.name}: ${rank}, rating ${standing.rating}, ${standing.wins}W ${standing.losses}L${streak} (best streak ${standing.bestStreak})`;
+}
+
+function describeMatch(match: HmpDuelMatchRecord, characterId: number): string {
+    const won = match.winnerCharacterId === characterId;
+    const opponent = (won ? match.loserName : match.winnerName) || "a deleted character";
+    const change = won ? match.winner : match.loser;
+    return `${won ? "W" : "L"} vs ${opponent} (${match.reason})${change ? ` ${signed(change.delta)} → ${change.after}` : " unrated"}`;
+}
+
+async function rankCommand(player: HmpDuelPlayer, action: string, args: string[], reply: (message: string) => void): Promise<void> {
+    if (action === "top") {
+        const board = await ranking.leaderboard();
+        if (!board.length) { reply("nobody has a rated duel yet"); return; }
+        reply(`top ${board.length} duelists:`);
+        for (const entry of board) reply(`#${entry.rank} ${entry.name} ${entry.rating} (${entry.wins}W ${entry.losses}L)`);
+        return;
+    }
+    const target = args.length > 1 ? Hmp.player.find(args.slice(1).join(" "), player) : player;
+    if (!target) { reply(`Usage: /${command} ${action} [#playerId|nickname]`); return; }
+    const character = core.characters.active(target);
+    if (!character) { reply(`${target.nickname} has no character loaded`); return; }
+    if (action === "rank") { reply(describeStanding(await ranking.standing(character.id), character.name)); return; }
+    const matches = await ranking.history(character.id, 5);
+    if (!matches.length) { reply(`${character.name} has no recorded duels`); return; }
+    reply(`${character.name}'s last ${matches.length} duels:`);
+    for (const match of matches) reply(describeMatch(match, character.id));
+}
 
 async function promptChallenge(target: HmpDuelPlayer, challenger: HmpDuelPlayer): Promise<void> {
     const answer = await ui.alert(target, {
@@ -69,8 +162,12 @@ if (loaded.enableCommands !== false) Events.on("chatCommand", (player: HmpDuelPl
         if (action === "cancel") { reply(await duels.cancel(player) ? "challenge withdrawn" : "no outgoing challenge"); return; }
         if (action === "forfeit") { reply(await duels.forfeit(player) ? "duel forfeited" : "you are not in a duel"); return; }
         if (action === "status") { const status = duels.status(); reply(`${status.pending} pending, ${status.countdowns} countdown, ${status.live} live`); return; }
+        if (action === "rank" || action === "top" || action === "history") {
+            if (!rankingQueries.allow(player.id)) { reply("Please slow down."); return; }
+            await rankCommand(player, action, args, reply); return;
+        }
         const target = action ? Hmp.player.find(args.join(" "), player) : null;
-        if (!target || target.id === player.id) { reply(`Usage: /${command} <#playerId|nickname> | accept | decline | cancel | forfeit | status`); return; }
+        if (!target || target.id === player.id) { reply(`Usage: /${command} <#playerId|nickname> | accept | decline | cancel | forfeit | status | rank [player] | top | history [player]`); return; }
         const challenge = await duels.challenge(player, target);
         reply(`challenge sent to ${target.nickname}; expires ${new Date(challenge.expiresAt).toLocaleTimeString()}`);
         void promptChallenge(target, player).catch((error) => logger.warn(`Challenge prompt failed: ${error instanceof Error ? error.message : String(error)}`));
@@ -82,4 +179,9 @@ Events.on("pvpDefeat", (victim: HmpDuelPlayer, killer: HmpDuelPlayer) => { void 
 Events.on("playerDied", (player: HmpDuelPlayer) => { void duels.died(player); });
 Events.on("playerDisconnect", (player: HmpDuelPlayer) => { void duels.disconnected(player); });
 Events.on("resourceStop", (name?: string) => { if (!name || name === "hmp-duels") void duels.stop(); });
+Events.on("resourceStart", (name?: string) => {
+    if (name && name !== "hmp-duels") return;
+    ranking.start().then(() => { if (ranking.status().state === "ready") logger.info("Duel ranking ready"); })
+        .catch((error) => logger.error(`Duel ranking unavailable: ${messageOf(error)}`));
+});
 logger.info("Consensual non-lethal duel service ready");
