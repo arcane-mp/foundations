@@ -454,7 +454,8 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
         if (!battle) return;
         letGo(battle, playerId);
         const match = battle.match;
-        if (!match || battle.phase === "done") return;
+        // A fighter who retired and then disconnects comes back here; they left once already.
+        if (!match || battle.phase === "done" || !match.inMatch(playerId)) return;
         const name = match.fighters.get(playerId)?.nickname || "A fighter";
         const result = match.leave(playerId, now());
         everyone(battle, `${name} left the battle`);

@@ -211,6 +211,20 @@ test("a house whose fighters leave forfeits; retiring keeps the activity until t
     await service.stop();
 });
 
+test("a retired fighter who then disconnects is announced once", async () => {
+    const context = setup();
+    const { time, players: [p1, , p3], service, activities, finished } = context;
+    await lobby(context);
+    await service.start(p1);
+    time.advance(3000);
+    assert.strictEqual(await service.leave(p3), true);
+    await activities.disconnect(p3);
+    await tick();
+    assert.strictEqual(p1.said.filter((line) => /P3 left the battle/.test(line)).length, 1);
+    assert.strictEqual(finished.length, 0, "the match goes on");
+    await service.stop();
+});
+
 test("the host can stop a running battle: no winner and no points", async () => {
     const context = setup();
     const { time, players: [p1], service, finished, awards, pairs } = context;
