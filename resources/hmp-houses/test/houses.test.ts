@@ -4,7 +4,7 @@ import normalizeModule = require("../shared/normalize");
 import repositoryModule = require("../server/repository");
 import serviceModule = require("../server/service");
 import type { HmpHouseId, HmpHouseMembership, HmpHouseMembershipAudit, HmpHousePointTransaction, HmpHouseStanding } from "../types";
-import type { HousesRepository, Player, PointDraft } from "../server/internal";
+import type { HousesRepository, Player, PointDraft, PointFilter } from "../server/internal";
 
 const { house, nativeHouse } = normalizeModule;
 const { mapStanding, mapPoint } = repositoryModule;
@@ -45,6 +45,12 @@ async function run(): Promise<void> {
     const standings = new Map<HmpHouseId, number>([["gryffindor", 0], ["hufflepuff", 0], ["ravenclaw", 0], ["slytherin", 0]]);
     const transactions = new Map<string, HmpHousePointTransaction>();
     let transactionId = 0;
+    const pointFilters: PointFilter[] = [];
+    const pointMatches = (entry: HmpHousePointTransaction, house: HmpHouseId | undefined, filter: PointFilter) => {
+        pointFilters.push(filter);
+        return (!house || entry.house === house) && (!filter.resource || entry.resource === filter.resource)
+            && (filter.ageSeconds === undefined || new Date(entry.createdAt).getTime() >= now().getTime() - filter.ageSeconds * 1000);
+    };
     const repository: HousesRepository = {
         migrate: async () => undefined,
         membership: async (characterId) => memberships.get(characterId) || null,
@@ -91,7 +97,8 @@ async function run(): Promise<void> {
             transactions.set(reference, failed);
             return failed;
         },
-        pointHistory: async (house, count) => [...transactions.values()].filter((entry) => !house || entry.house === house).slice(-count).reverse(),
+        pointHistory: async (house, count, filter = {}) => [...transactions.values()].filter((entry) => pointMatches(entry, house, filter)).slice(-count).reverse(),
+        pointTotal: async (house, filter = {}) => [...transactions.values()].filter((entry) => entry.status !== "failed" && pointMatches(entry, house, filter)).reduce((total, entry) => total + entry.amount, 0),
         pendingPoints: async (count) => [...transactions.values()].filter((entry) => entry.status === "pending").slice(0, count),
     };
 
@@ -145,6 +152,29 @@ async function run(): Promise<void> {
     assert.strictEqual(emitted.filter((event) => event.name === "hmp:houses:points").length, 2);
     assert.strictEqual(emitted.filter((event) => event.name === "hmp:houses:changed").length, 3);
     assert.strictEqual(service.status().state, "ready");
+    // Filters narrow the history and give a total with no row limit; the time bound reaches the repository as an age.
+    assert.deepStrictEqual((await service.points.history(undefined, 50, { resource: "hmp-duels" })).map((row) => row.reference), ["duels:penalty-1"]);
+    assert.strictEqual(await service.points.total("gryffindor"), 40);
+    assert.strictEqual(await service.points.total("gryffindor", { resource: "hmp-quidditch" }), 50);
+    assert.strictEqual(await service.points.total("slytherin", { resource: "hmp-quidditch" }), 0);
+    pointFilters.length = 0;
+    assert.strictEqual(await service.points.total("gryffindor", { resource: "hmp-quidditch", since: new Date(now().getTime() - 90_500) }), 50);
+    assert.deepStrictEqual(pointFilters[0], { resource: "hmp-quidditch", ageSeconds: 91 }, "the age is rounded up");
+    pointFilters.length = 0;
+    await service.points.total("gryffindor", { since: now().getTime() + 60_000 });
+    assert.deepStrictEqual(pointFilters[0], { ageSeconds: 0 }, "a future bound is an age of zero");
+    await assert.rejects(() => service.points.history("gryffindor", 10, { since: "never" }), /since must be a date/);
+    const queries: Array<{ sql: string; values: unknown }> = [];
+    const sqlRepository = repositoryModule.createRepository({
+        transaction: async () => undefined, query: async (sql: string, values: unknown) => { queries.push({ sql, values }); return []; },
+        scalar: async (sql: string, values: unknown) => { queries.push({ sql, values }); return "120"; },
+    } as never);
+    await sqlRepository.pointHistory("ravenclaw", 20, { resource: "hmp-housewars", ageSeconds: 300 });
+    assert.strictEqual(await sqlRepository.pointTotal("ravenclaw", { resource: "hmp-housewars", ageSeconds: 3600 }), 120);
+    assert.deepStrictEqual(queries, [
+        { sql: "SELECT * FROM hmp_house_point_transactions WHERE house_id = ? AND source_resource = ? AND created_at >= CURRENT_TIMESTAMP - INTERVAL ? SECOND ORDER BY id DESC LIMIT 20", values: ["ravenclaw", "hmp-housewars", 300] },
+        { sql: "SELECT COALESCE(SUM(amount), 0) FROM hmp_house_point_transactions WHERE status <> 'failed' AND house_id = ? AND source_resource = ? AND created_at >= CURRENT_TIMESTAMP - INTERVAL ? SECOND", values: ["ravenclaw", "hmp-housewars", 3600] },
+    ]);
 
     // Common-room grants live on the character and reach the online player at once, by player or character id.
     assert.deepStrictEqual(await service.commonRooms.list(player), []);

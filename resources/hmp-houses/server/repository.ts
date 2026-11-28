@@ -1,7 +1,7 @@
 import normalizeModule = require("../shared/normalize");
 import type { HmpMySQLMigration, HmpMySQLTransaction } from "../../hmp-mysql/types";
 import type { HmpHouseId, HmpHouseMembership, HmpHouseMembershipAudit, HmpHousePointTransaction, HmpHouseStanding } from "../types";
-import type { Database, HousesRepository, MembershipMutation, PointDraft } from "./internal";
+import type { Database, HousesRepository, MembershipMutation, PointDraft, PointFilter } from "./internal";
 
 const { house: normalizeHouse } = normalizeModule;
 
@@ -223,9 +223,25 @@ function createRepository(database: Database): HousesRepository {
         return transaction;
     }
 
-    async function pointHistory(house: HmpHouseId | undefined, limit: number): Promise<HmpHousePointTransaction[]> {
-        const rows = await database.query<PointRow[]>(`SELECT * FROM hmp_house_point_transactions${house ? " WHERE house_id = ?" : ""} ORDER BY id DESC LIMIT ${limit}`, house ? [house] : []);
+    function pointWhere(clauses: string[], values: Array<string | number>, house: HmpHouseId | undefined, filter: PointFilter): string {
+        if (house) { clauses.push("house_id = ?"); values.push(house); }
+        if (filter.resource) { clauses.push("source_resource = ?"); values.push(filter.resource); }
+        // An age on the database's own clock: created_at is a TIMESTAMP read in the session's time zone,
+        // which the driver's timezone option does not have to match.
+        if (filter.ageSeconds !== undefined) { clauses.push("created_at >= CURRENT_TIMESTAMP - INTERVAL ? SECOND"); values.push(filter.ageSeconds); }
+        return clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
+    }
+
+    async function pointHistory(house: HmpHouseId | undefined, limit: number, filter: PointFilter = {}): Promise<HmpHousePointTransaction[]> {
+        const values: Array<string | number> = [];
+        const rows = await database.query<PointRow[]>(`SELECT * FROM hmp_house_point_transactions${pointWhere([], values, house, filter)} ORDER BY id DESC LIMIT ${limit}`, values);
         return rows.map(mapPoint);
+    }
+
+    async function pointTotal(house: HmpHouseId, filter: PointFilter = {}): Promise<number> {
+        const values: Array<string | number> = [];
+        const total = await database.scalar<number | string>(`SELECT COALESCE(SUM(amount), 0) FROM hmp_house_point_transactions${pointWhere(["status <> 'failed'"], values, house, filter)}`, values);
+        return safeInteger(total ?? 0, "house point total");
     }
 
     async function pendingPoints(limit: number): Promise<HmpHousePointTransaction[]> {
@@ -236,7 +252,7 @@ function createRepository(database: Database): HousesRepository {
     return Object.freeze({
         migrate: (migrations: HmpMySQLMigration[]) => database.migrate("hmp-houses", migrations),
         membership, setMembership, clearMembership, members, membershipHistory,
-        standing, standings, pointTransaction, beginPoint, applyPoint, failPoint, pointHistory, pendingPoints,
+        standing, standings, pointTransaction, beginPoint, applyPoint, failPoint, pointHistory, pointTotal, pendingPoints,
     });
 }
 

@@ -53,6 +53,12 @@ export interface PointDraft {
     metadata: Record<string, unknown>;
 }
 
+/** A point filter as the repository takes it: the time bound is an age, so the database measures it on its own clock. */
+export interface PointFilter {
+    resource?: string;
+    ageSeconds?: number;
+}
+
 export interface HousesRepository {
     migrate(migrations: HmpMySQLMigration[]): Promise<unknown>;
     membership(characterId: number): Promise<HmpHouseMembership | null>;
@@ -66,7 +72,8 @@ export interface HousesRepository {
     beginPoint(draft: PointDraft): Promise<{ created: boolean; transaction: HmpHousePointTransaction }>;
     applyPoint(reference: string, allowNegative: boolean): Promise<HmpHousePointTransaction>;
     failPoint(reference: string, error: string): Promise<HmpHousePointTransaction>;
-    pointHistory(house: HmpHouseId | undefined, limit: number): Promise<HmpHousePointTransaction[]>;
+    pointHistory(house: HmpHouseId | undefined, limit: number, filter?: PointFilter): Promise<HmpHousePointTransaction[]>;
+    pointTotal(house: HmpHouseId, filter?: PointFilter): Promise<number>;
     pendingPoints(limit: number): Promise<HmpHousePointTransaction[]>;
 }
 

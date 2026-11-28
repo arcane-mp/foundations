@@ -26,6 +26,9 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 - `hmp-activities` definitions take a `canStart` gate beside `canCreate` and `canJoin`. It runs after the
   player, role, team and readiness checks and receives the starting player and the `resource` of the owner
   context, so a gameplay resource can refuse `/activities start` and still start through its own owner API.
+- `hmp-houses` `points.history(house, limit, filter)` takes an optional `{ resource, since }` filter, and
+  `points.total(house, filter)` sums a house's rows that did not fail with no row limit. `since` is measured
+  as an age on the database's clock, so the MySQL session time zone does not shift it.
 - `design/arcanum` is the single source of the Arcanum look: `tokens.css` (colour, type, space, corners,
   elevation and motion as `--arc-*` properties) and the Cinzel and Spectral fonts with their OFL licences.
   Spectral SemiBold joins Spectral Regular. `scripts/arcanum.mjs` copies it into a resource's `dist/`, so

@@ -66,8 +66,15 @@ failed rather than remaining capable of applying unexpectedly later.
 await Houses.points.standings();
 await Houses.points.get("ravenclaw");
 await Houses.points.history("ravenclaw", 50);
+await Houses.points.history("ravenclaw", 50, { resource: "hmp-quidditch", since: Date.now() - 3_600_000 });
+await Houses.points.total("ravenclaw", { resource: "hmp-quidditch", since: midnight });
 await Houses.points.pending(50);
 ```
+
+`history` returns at most 200 rows, newest first, from every resource unless a filter narrows it. A
+filter takes a `resource` and a `since` moment; `since` is sent to MySQL as an age against its own clock,
+so the session time zone does not shift the window. `total` sums a house's rows that did not fail
+(completed and pending) with no row limit, which is what a cap or quota should read.
 
 `allowNegativePoints` controls whether deductions may take a house below zero. JavaScript safe-integer
 limits are enforced even though MySQL can store larger values.

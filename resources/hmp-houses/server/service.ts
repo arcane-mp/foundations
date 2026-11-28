@@ -1,7 +1,7 @@
 import normalizeModule = require("../shared/normalize");
 import type { HmpCoreGroup } from "../../hmp-core/types";
-import type { HmpHouseId, HmpHouseMutationOptions, HmpHousePointOptions, HmpHousePointTransaction, HmpHouseStanding } from "../types";
-import type { HousesDependencies, HousesService, Player, PointDraft } from "./internal";
+import type { HmpHouseId, HmpHouseMutationOptions, HmpHousePointFilter, HmpHousePointOptions, HmpHousePointTransaction, HmpHouseStanding } from "../types";
+import type { HousesDependencies, HousesService, Player, PointDraft, PointFilter } from "./internal";
 
 const { HOUSES, house: normalizeHouse, nativeHouse, clean, positiveId, limit, signedAmount, metadata } = normalizeModule;
 const COMMON_ROOMS_KEY = "hmp-houses:commonRooms";
@@ -161,6 +161,20 @@ function createHousesService(dependencies: HousesDependencies): HousesService {
             reason: optionalText(options.reason, 191),
             metadata: metadata(options.metadata),
         };
+    }
+
+    function pointFilter(filter: HmpHousePointFilter | undefined): PointFilter {
+        if (filter === undefined || filter === null) return {};
+        if (typeof filter !== "object") throw new TypeError("house point filter must be an object");
+        const result: PointFilter = {};
+        if (filter.resource !== undefined) result.resource = resource(filter.resource);
+        if (filter.since !== undefined) {
+            const since = new Date(filter.since).getTime();
+            if (!Number.isFinite(since)) throw new TypeError("house point filter since must be a date");
+            // Rounded up, so a row from the second the window opens is never left out.
+            result.ageSeconds = Math.max(0, Math.ceil((now() - since) / 1000));
+        }
+        return result;
     }
 
     function assertReplay(transaction: HmpHousePointTransaction, draft: PointDraft): void {
@@ -353,7 +367,11 @@ function createHousesService(dependencies: HousesDependencies): HousesService {
                 return adjust(house, -value, options);
             },
             transaction: async (reference: string) => { await start(); return repository.pointTransaction(pointReference(reference)); },
-            history: async (rawHouse?: HmpHouseId, rawLimit = 50) => { await start(); return repository.pointHistory(rawHouse ? normalizeHouse(rawHouse) : undefined, limit(rawLimit)); },
+            history: async (rawHouse?: HmpHouseId, rawLimit = 50, filter?: HmpHousePointFilter) => {
+                await start();
+                return repository.pointHistory(rawHouse ? normalizeHouse(rawHouse) : undefined, limit(rawLimit), pointFilter(filter));
+            },
+            total: async (rawHouse: HmpHouseId, filter?: HmpHousePointFilter) => { await start(); return repository.pointTotal(normalizeHouse(rawHouse), pointFilter(filter)); },
             pending: async (rawLimit = 50) => { await start(); const rows = await repository.pendingPoints(limit(rawLimit)); pendingTransactions = rows.length; return rows; },
             recover,
         }),
