@@ -8,13 +8,36 @@ import type {
     HmpCoreSession,
     HmpCoreStatus,
 } from "../types";
-import type { CoreConfig, CoreOptions, Player, ProviderEntry, Scope } from "./internal";
+import type { CoreConfig, CoreOptions, IdentityResult, Player, ProviderEntry, Scope } from "./internal";
 
-const IDENTITY_FIELDS: Readonly<Record<string, string>> = Object.freeze({
-    steamId: "client-steam",
-    discordId: "client-discord",
-    hardwareId: "client-hardware",
+const HOST_ACCOUNT_PROVIDER = "host-account";
+const IDENTITY_FIELDS: Readonly<Record<string, { provider: string; trust: string }>> = Object.freeze({
+    accountId: { provider: HOST_ACCOUNT_PROVIDER, trust: "verified" },
+    steamId: { provider: "client-steam", trust: "asserted" },
+    discordId: { provider: "client-discord", trust: "asserted" },
+    hardwareId: { provider: "client-hardware", trust: "asserted" },
+    epicId: { provider: "client-epic", trust: "asserted" },
 });
+// Steam, Discord and hardware IDs are decimal. An Epic Games account ID is 32 hexadecimal digits, kept lowercase.
+// The host signs its account ID, so that ID's format is the host's to choose.
+const DECIMAL_ID = /^\d+$/;
+const EPIC_ACCOUNT_ID = /^[0-9a-f]{32}$/;
+const LOG_VALUE_LIMIT = 64;
+
+function identitySubject(field: string, value: unknown): string | null {
+    const subject = String(value ?? "").trim();
+    if (!subject || subject.length > 191) return null;
+    if (field === "epicId") return EPIC_ACCOUNT_ID.test(subject.toLowerCase()) ? subject.toLowerCase() : null;
+    if (field === "accountId") return subject;
+    return DECIMAL_ID.test(subject) ? subject : null;
+}
+
+/** Escapes control characters and bounds a client value before it reaches a log line. */
+function logValue(value: unknown): string {
+    const text = String(value ?? "").trim();
+    const bounded = text.length > LOG_VALUE_LIMIT ? `${text.slice(0, LOG_VALUE_LIMIT - 3)}...` : text;
+    return JSON.stringify(bounded).slice(1, -1);
+}
 const CLIENT_PROVIDER = "hmp-client-identity";
 // A load whose player disconnected keeps the character claimed until its loading handlers return, so a new
 // session cannot load it alongside them. This bounds a handler that never returns.
@@ -70,6 +93,8 @@ function createCore(options: CoreOptions) {
     const listPlayers = options.listPlayers || (() => []);
     const logger = options.logger || console;
     const config = options.config || {};
+    // Identity is resolved and then matched to an account, so warn only once for a player's bad Epic ID.
+    const warnedInvalidEpic = new WeakSet<Player>();
     if (!repository || !database) throw new TypeError("repository and database are required");
 
     let state: HmpCoreStatus["state"] = "starting";
@@ -155,25 +180,39 @@ function createCore(options: CoreOptions) {
     function clientIdentities(player: Player): HmpCorePrincipal[] {
         const identities: HmpCorePrincipal[] = [];
         for (const field of config.identityOrder || Object.keys(IDENTITY_FIELDS)) {
-            const provider = IDENTITY_FIELDS[field];
-            const subject = String((player as unknown as Record<string, unknown>)[field] ?? "").trim();
-            if (provider && /^\d+$/.test(subject)) identities.push({ provider, subject, trust: "asserted" });
+            const definition = IDENTITY_FIELDS[field];
+            const raw = (player as unknown as Record<string, unknown>)[field];
+            const subject = identitySubject(field, raw);
+            if (field === "epicId" && String(raw ?? "").trim() && !subject && !warnedInvalidEpic.has(player)) {
+                warnedInvalidEpic.add(player);
+                logWarn(`[hmp-core] Ignoring Epic Games account ID '${logValue(raw)}': expected 32 hexadecimal digits`);
+            }
+            if (definition && subject) identities.push({ provider: definition.provider, subject, trust: definition.trust });
         }
         return identities;
     }
 
+    // The host's signed account ID is resolved here too. It is the only one with verified trust, so it is
+    // the session's principal whenever identityOrder names it and the host supplies it.
     registerProvider({
         name: CLIENT_PROVIDER,
         resource: "hmp-core",
         priority: -1000,
         trust: "asserted",
-        resolve: (player: Player) => clientIdentities(player)[0] || null,
+        resolve: (player: Player) => {
+            const identities = clientIdentities(player);
+            return identities.find((identity) => identity.provider === HOST_ACCOUNT_PROVIDER) || identities[0] || null;
+        },
     });
 
     // A client announces only the IDs it detected on that launch, so Steam or Discord can be missing
     // from one session to the next. The account is found through any announced ID and remembers them all.
     async function accountForClientIdentities(identities: HmpCorePrincipal[], displayName: string): Promise<HmpCoreAccount> {
         const owners = await Promise.all(identities.map((identity) => repository.findIdentity(identity.provider, identity.subject)));
+        const proven = identities.findIndex((identity) => identity.provider === HOST_ACCOUNT_PROVIDER);
+        // A client can send anyone's Steam, Epic, Discord or hardware ID. With the host's proven account ID only
+        // that ID picks the account, and an account found through a client-reported ID is never given it.
+        if (proven >= 0) return linkClientIdentities(await repository.findOrCreateAccount(identities[proven], displayName), identities, owners, proven);
         let match = owners.findIndex(Boolean);
         if (match > 0) {
             // The IDs ranked above the match are new. An account that already holds a different ID of one
@@ -182,7 +221,11 @@ function createCore(options: CoreOptions) {
             if (identities.slice(0, match).some((identity) => held.has(identity.provider))) match = -1;
         }
         const primary = Math.max(match, 0);
-        const account = await repository.findOrCreateAccount(identities[primary], displayName);
+        return linkClientIdentities(await repository.findOrCreateAccount(identities[primary], displayName), identities, owners, primary);
+    }
+
+    // Links the IDs no account holds yet. One another account holds stays with it and is only logged.
+    async function linkClientIdentities(account: HmpCoreAccount, identities: HmpCorePrincipal[], owners: Array<IdentityResult | null>, primary: number): Promise<HmpCoreAccount> {
         for (const [index, identity] of identities.entries()) {
             const owner = owners[index];
             if (owner && owner.account.id !== account.id) {

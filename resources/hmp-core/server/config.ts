@@ -11,7 +11,7 @@ function loadConfig(Hmp: HmpLibServer<Player>, options: { env?: NodeJS.ProcessEn
         duplicateSessionGroup: "admin",
         duplicateSessionMinimumGrade: 1,
         kickDuplicateSession: false,
-        identityOrder: ["steamId", "discordId", "hardwareId"],
+        identityOrder: ["accountId", "steamId", "discordId", "hardwareId", "epicId"],
         tickets: { required: false, rejectMessage: "Join this server from its website.", repeatSeconds: 120 },
     };
     const config = Hmp.config.load<CoreConfig>(env.HMP_CORE_CONFIG || "data/hmp-core.json", { cwd, defaults });
