@@ -34,8 +34,10 @@ an `hmp-duels` loser kneels.
    every other house that still has a fighter in the match at the end gets `housePoints.participation`;
    a house whose fighters all left gets nothing. Points are paid only after a round
    that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters, so a quick
-   single knock-out, a fall, or a match of forfeits alone pays nobody. The cooldown of
-   `housePointsCooldownSeconds` applies to the same house and the same group of fighters, and a house
+   single knock-out, a fall, or a match of forfeits alone pays nobody. A match pays nobody if any
+   character who fought in it, including one who left, fought in a match this gamemode paid within the
+   last `housePointsCooldownSeconds`. The ledger rows record the characters (and player ids) of their
+   match, so swapping one alt, reconnecting under a new player id or a restart does not reset it. A house
    can receive at most `housePointsDailyCap` points per day from this gamemode. Cooldowns and the daily
    total come from the `hmp-houses` ledger, so they survive a restart. The daily total is the ledger's
    own sum of this gamemode's rows for the house since local midnight (`points.total`), so other

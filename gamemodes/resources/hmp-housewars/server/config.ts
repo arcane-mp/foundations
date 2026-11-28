@@ -20,7 +20,7 @@ export interface HouseWarsConfig {
     /** A round pays only if it ran this long, or had KOs by this many different fighters. */
     minPayoutRoundSeconds: number;
     minPayoutKillers: number;
-    /** Minimum seconds between point payouts to the same house and the same group of players; 0 disables it. */
+    /** A match pays nobody if any of its characters fought in a match paid within this many seconds; 0 disables it. */
     housePointsCooldownSeconds: number;
     /** Most House Cup points this resource may pay one house in a day; 0 disables the cap. */
     housePointsDailyCap: number;

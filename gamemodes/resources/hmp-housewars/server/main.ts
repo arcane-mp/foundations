@@ -6,7 +6,7 @@ import type { HmpPvp } from "../../../../resources/hmp-pvp/types";
 import type { HmpHouseWarsFinished } from "../types";
 import { HOUSE_LABELS } from "../shared/types";
 import { normalizeConfig } from "./config";
-import { RESOURCE, createHouseWarsService, type HouseWarsPlayer } from "./service";
+import { HISTORY_LIMIT, RESOURCE, createHouseWarsService, type HouseWarsPlayer } from "./service";
 
 const Hmp = Imports.get<HmpLibServer<HouseWarsPlayer>>("hmp-lib");
 const Core = Imports.get<HmpCore<HouseWarsPlayer>>("hmp-core");
@@ -32,7 +32,7 @@ const battles = createHouseWarsService({
     setRecovery: (id, on) => { try { PlayerManager.getById(id)?.setHealthRecovery?.(on); } catch (_) { /* left */ } },
     endKneel: (id) => { try { PlayerManager.getById(id)?.endKneel?.(); } catch (_) { /* left */ } },
     award: async (house, amount, reference, reason, metadata) => { await Houses.points.award(house, amount, { reference, resource: RESOURCE, reason, metadata }); },
-    history: (house) => Houses.points.history(house, 200),
+    history: (since) => Houses.points.history(undefined, HISTORY_LIMIT, { resource: RESOURCE, since }),
     total: (house, since) => Houses.points.total(house, { resource: RESOURCE, since }),
     emit: (player, event, payload) => player.emit(event, payload),
     say: (player, message) => player.sendChat?.(`[HOUSES] ${message}`),

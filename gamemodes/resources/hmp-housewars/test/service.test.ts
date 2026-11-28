@@ -72,6 +72,8 @@ function setup(
     const warnings: string[] = [];
     const finished: HmpHouseWarsFinished[] = [];
     let room = true;
+    // A character on another player id, as after a reconnect or a restart.
+    const characterIds = new Map<number, number>();
     const config = normalizeConfig({ countdownSeconds: 3, intermissionSeconds: 5, roundSeconds: 60, ...overrides });
     let dropped: number | null = null;
     const sessions = dropAfterStart === undefined ? activities.sessions : {
@@ -92,7 +94,7 @@ function setup(
     const service = createHouseWarsService({
         config, activities: (dropAfterStart === undefined ? activities : { ...activities, sessions }) as never, pvp,
         player: (id) => players.find((player) => player.id === id) || null,
-        character: (player) => ({ id: player.id * 10, name: `C${player.id}` }),
+        character: (player) => ({ id: characterIds.get(player.id) ?? player.id * 10, name: `C${player.id}` }),
         house: async (player) => { if (onHouse) await onHouse(player); return houses[player.id] ?? null; },
         pair: (a, b, options) => { const key = a < b ? `${a}:${b}` : `${b}:${a}`; if (options === null) pairs.delete(key); else pairs.set(key, options); return room || options === null; },
         setRecovery: (id, on) => { recovery.set(id, on); },
@@ -102,7 +104,7 @@ function setup(
             ledger.push({ id: ledger.length + 1, reference, house, amount, balanceAfter: null, actorCharacterId: null, resource: RESOURCE, reason, metadata: metadata || {}, status: "completed", error: "", createdAt: new Date(time.now()), completedAt: new Date(time.now()) });
         },
         // Like hmp-houses: the newest 200 rows of every resource.
-        history: async (house) => ledger.filter((row) => row.house === house).slice(-200).reverse().map((row) => ({ ...row })),
+        history: async (since) => ledger.filter((row) => row.resource === RESOURCE && new Date(row.createdAt).getTime() >= since).slice(-200).reverse().map((row) => ({ ...row })),
         total: async (house, since) => ledger.filter((row) => row.house === house && row.resource === RESOURCE && row.status !== "failed" && new Date(row.createdAt).getTime() >= since)
             .reduce((sum, row) => sum + row.amount, 0),
         emit: (player, event, payload) => player.emit(event, payload),
@@ -112,7 +114,7 @@ function setup(
         now: time.now, setTimer: time.setTimer, clearTimer: time.clearTimer,
     });
     const hit = (casterId: number, victimId: number) => pvp.policy.evaluate({ casterId, victimId, spellId: 1, spell: "Stupefy", damage: 20, duration: 0 });
-    return { time, players, activities, pvp, service, pairs, recovery, kneels, awards, ledger, warnings, finished, hit, setRoom: (value: boolean) => { room = value; }, policy: () => policy };
+    return { time, players, activities, pvp, service, pairs, recovery, kneels, awards, ledger, warnings, finished, hit, characterIds, setRoom: (value: boolean) => { room = value; }, policy: () => policy };
 }
 
 async function lobby(context: ReturnType<typeof setup>, ids = [1, 2, 3, 4]) {
@@ -312,9 +314,9 @@ test("checks the house of a team changed while the start's checks await", async 
     await service.stop();
 });
 
-test("reads a player-scoped cooldown from the ledger, not a per-house memory timer", async () => {
-    const context = setup({ housePointsCooldownSeconds: 60, rounds: 1, minPayoutKillers: 1 });
-    const { time, service, awards, ledger, warnings } = context;
+test("reads a character-scoped cooldown from the ledger, not a per-house memory timer", async () => {
+    const context = setup({ housePointsCooldownSeconds: 60, rounds: 1, minPayoutKillers: 1 }, { 1: "gryffindor", 2: "gryffindor", 3: "slytherin", 4: "slytherin", 5: "slytherin" });
+    const { time, service, awards, ledger, warnings, characterIds } = context;
     const quickMatch = async (ids = [1, 3]) => {
         await lobby(context, ids);
         await service.start(context.players[ids[0] - 1]);
@@ -324,14 +326,57 @@ test("reads a player-scoped cooldown from the ledger, not a per-house memory tim
     };
     await quickMatch();
     assert.deepStrictEqual(awards.map(([house, amount]) => [house, amount]), [["gryffindor", 60], ["slytherin", 10]]);
-    assert.deepStrictEqual(ledger[0].metadata.players, [1, 3], "the ledger records who fought");
+    assert.deepStrictEqual([ledger[0].metadata.characters, ledger[0].metadata.players], [[10, 30], [1, 3]], "the ledger records who fought");
     await quickMatch([2, 4]);
-    assert.strictEqual(awards.length, 4, "a different pair of fighters is not blocked by the same houses");
-    await quickMatch();
-    assert.strictEqual(awards.length, 4, "the same fighters are blocked by the ledger cooldown");
-    time.advance(60_000);
+    assert.strictEqual(awards.length, 4, "different characters are not blocked by the same houses");
+    await quickMatch([1, 5]);
+    assert.strictEqual(awards.length, 4, "swapping in a new alt does not dodge the cooldown: one character was paid");
+    assert.ok(warnings.some((line) => /paid inside the cooldown/.test(line)));
+    characterIds.set(5, 30);
+    time.advance(30_000);
+    await quickMatch([5, 2]);
+    assert.strictEqual(awards.length, 4, "a character back on a new player id is still in its cooldown");
+    time.advance(30_000);
     await quickMatch();
     assert.strictEqual(awards.length, 6, "the cooldown expires");
+    await service.stop();
+});
+
+test("a fighter who left a paid battle is still in its cooldown", async () => {
+    const context = setup({ housePointsCooldownSeconds: 60, rounds: 1, minPayoutKillers: 1 });
+    const { time, players: [p1, , , p4], service, awards, finished, warnings } = context;
+    await lobby(context);
+    await service.start(p1);
+    time.advance(3000);
+    assert.strictEqual(await service.leave(p4), true, "the alt walks out of a running battle");
+    service.defeated(3, 1);
+    await tick();
+    assert.deepStrictEqual(awards.map(([house]) => house), ["gryffindor", "slytherin"]);
+    await lobby(context, [5, 4]);
+    await service.start(context.players[4]);
+    time.advance(3000);
+    service.defeated(4, 5);
+    await tick();
+    assert.strictEqual(finished[1].winner, "ravenclaw");
+    assert.strictEqual(awards.length, 2, "the leaver's character was in the paid battle");
+    assert.ok(warnings.some((line) => /paid inside the cooldown/.test(line)));
+    await service.stop();
+});
+
+test("pays nobody when the cooldown window holds more rows than one read returns", async () => {
+    const context = setup({ housePointsCooldownSeconds: 60, rounds: 1, minPayoutKillers: 1 });
+    const { time, service, awards, ledger, warnings } = context;
+    for (let i = 0; i < 200; i++) {
+        ledger.push({ id: i + 1, reference: `old:${i}`, house: "ravenclaw", amount: 10, balanceAfter: null, actorCharacterId: null, resource: RESOURCE, reason: "", metadata: { characters: [1000 + i] },
+            status: "completed", error: "", createdAt: new Date(time.now()), completedAt: new Date(time.now()) });
+    }
+    await lobby(context, [1, 3]);
+    await service.start(context.players[0]);
+    time.advance(3000);
+    service.defeated(3, 1);
+    await tick();
+    assert.strictEqual(awards.length, 0, "older rows of the window could hide these characters");
+    assert.ok(warnings.some((line) => /cooldown/.test(line)));
     await service.stop();
 });
 

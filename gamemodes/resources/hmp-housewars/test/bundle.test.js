@@ -8,6 +8,7 @@ const emitted = [];
 const pairs = [];
 const awarded = [];
 const totals = [];
+const histories = [];
 
 const makePlayer = (id, nickname) => ({
     id, nickname, position: { x: 0, y: 0, z: 0 }, sent: [],
@@ -47,7 +48,7 @@ const services = {
     "hmp-activities": activities,
     "hmp-houses": {
         membership: { get: async (player) => ({ house: houses[player.id] }) },
-        points: { award: async (house, amount, options) => { awarded.push([house, amount, options.reference]); return {}; }, history: async () => [], total: async (house, filter) => { totals.push([house, filter.resource]); return 0; }, standings: async () => [{ house: "gryffindor", points: 60 }, { house: "slytherin", points: 10 }] },
+        points: { award: async (house, amount, options) => { awarded.push([house, amount, options.reference]); return {}; }, history: async (house, limit, filter) => { histories.push([house, limit, filter.resource, typeof filter.since]); return []; }, total: async (house, filter) => { totals.push([house, filter.resource]); return 0; }, standings: async () => [{ house: "gryffindor", points: 60 }, { house: "slytherin", points: 10 }] },
     },
     "hmp-pvp": { policy: { register: (rule) => { rules.push(rule); return () => true; } } },
 };
@@ -79,6 +80,7 @@ async function runServer() {
     assert.ok(finished, "a finished battle raises hmp-housewars:finished");
     assert.strictEqual(finished.payload.winner, "gryffindor");
     assert.deepStrictEqual(awarded.map(([house, amount]) => [house, amount]), [["gryffindor", 60], ["slytherin", 10]]);
+    assert.deepStrictEqual(histories, [[undefined, 200, "hmp-housewars", "number"]], "the cooldown reads this resource's rows of every house");
     assert.deepStrictEqual(totals, [["gryffindor", "hmp-housewars"], ["slytherin", "hmp-housewars"]], "the daily cap reads this resource's ledger total");
     assert.deepStrictEqual(pairs.at(-1), [1, 2, null]);
     assert.match((await run(lion, "cup"))[0], /Gryffindor 60 · Slytherin 10/);

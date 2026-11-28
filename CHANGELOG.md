@@ -19,9 +19,10 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   battle's PvP rule no longer covers them, but the finished event still lists them with `left: true`, and
   kneeling fighters stand up when released. The winning house earns `housePoints.win` and every house
   with a fighter left at the end `housePoints.participation` through the `hmp-houses` ledger, but only after
-  a round that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters. The
-  cooldown applies to the same house and the same group of fighters, and a daily cap limits each house;
-  both come from the ledger's history, so they survive a restart. Every match that started raises
+  a round that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters. A match
+  pays nobody when any character who fought in it, leavers included, was in a paid match inside the
+  cooldown, and a daily cap limits each house; both come from the ledger (character ids in each row's
+  metadata, and `points.total` since midnight), so they survive a restart and a new player id. Every match that started raises
   `hmp-housewars:finished` once, also with a stopped result when the resource stops or the activity is
   cancelled outside the gamemode.
 - `hmp-activities` definitions take a `canStart` gate beside `canCreate` and `canJoin`. It runs after the

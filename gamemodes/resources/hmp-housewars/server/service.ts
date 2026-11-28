@@ -9,6 +9,8 @@ import { HOUSES, Match, spawnPoint, type FighterInput } from "./match";
 
 export const RESOURCE = "hmp-housewars";
 export const ACTIVITY_ID = "hmp-housewars:battle";
+/** Most ledger rows one cooldown read asks hmp-houses for (its own limit). */
+export const HISTORY_LIMIT = 200;
 /** Marks sessions opened by /housewars host, so a raw /activities create lobby cannot be started. */
 const HOSTED_BY = "housewars";
 const HOLD_OWNER = "hmp-housewars";
@@ -46,8 +48,8 @@ export interface HouseWarsDependencies {
     endKneel(playerId: number): void;
     /** House Cup points through the hmp-houses ledger; the reference makes a retry harmless. */
     award(house: HmpHouseWarsHouse, amount: number, reference: string, reason: string, metadata?: Record<string, unknown>): Promise<void>;
-    /** Past ledger rows, so cooldowns survive a restart. */
-    history(house: HmpHouseWarsHouse): Promise<HmpHousePointTransaction[]>;
+    /** This resource's ledger rows for every house since a moment, newest first, at most HISTORY_LIMIT; so cooldowns survive a restart. */
+    history(since: number): Promise<HmpHousePointTransaction[]>;
     /** Points this resource paid the house since a moment, summed by the ledger with no row limit, for the daily cap. */
     total(house: HmpHouseWarsHouse, since: number): Promise<number>;
     emit(player: HouseWarsPlayer, event: string, payload: unknown): void;
@@ -77,8 +79,10 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
     const unschedule = dependencies.clearTimer || clearTimeout;
     const battles = new Map<string, Battle>();
     const byPlayer = new Map<number, string>();
-    // Reserved before the ledger read and the await, so two battles ending together cannot both pay.
+    // Reserved before the ledger read and the await, so two battles ending together cannot both pay:
+    // `paying` holds the characters of every battle being paid, `reserving` each house's amount for the cap.
     const awarded = new Set<string>();
+    const paying = new Set<number>();
     const reserving = new Map<string, { amount: number; day: string }>();
     let stopped = false;
 
@@ -94,10 +98,20 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
         date.setHours(0, 0, 0, 0);
         return date.getTime();
     }
-    const playersKey =(ids: number[]) => [...ids].sort((a, b) => a - b).join(",");
-    function ledgerPlayers(row: HmpHousePointTransaction): string | null {
-        const ids = row.metadata?.players;
-        return Array.isArray(ids) && ids.every((id) => Number.isFinite(id)) ? playersKey(ids as number[]) : null;
+    function ledgerCharacters(row: HmpHousePointTransaction): number[] {
+        const ids = row.metadata?.characters;
+        return Array.isArray(ids) ? ids.filter((id): id is number => Number.isSafeInteger(id)) : [];
+    }
+
+    /** Whether any of these characters fought in a battle this resource paid inside the cooldown, by the ledger. */
+    async function paidRecently(characters: Set<number>, at: number): Promise<boolean> {
+        const cooldownMs = config.housePointsCooldownSeconds * 1000;
+        if (cooldownMs <= 0) return false;
+        const rows = await dependencies.history(at - cooldownMs);
+        // A full page may hide older rows of the window; refuse rather than pay past the cooldown.
+        if (rows.length >= HISTORY_LIMIT) return true;
+        return rows.some((row) => row.resource === RESOURCE && row.status !== "failed" && at - new Date(row.createdAt).getTime() < cooldownMs
+            && ledgerCharacters(row).some((id) => characters.has(id)));
     }
 
     function later(battle: Battle, handler: () => void, ms: number): Timer {
@@ -411,27 +425,27 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
         const housePoints: Partial<Record<HmpHouseWarsHouse, number>> = {};
         const at = now();
         const day = dayKey(at);
-        const ids = [...match.fighters.keys()];
-        const key = playersKey(ids);
+        const ids = [...match.fighters.keys()].sort((a, b) => a - b);
+        // Everyone who fought, leavers too: player ids change on a reconnect or restart, and swapping an alt
+        // out mid-match must not dodge the cooldown, so it is kept on characters.
+        const characterIds = [...match.fighters.values()].map((fighter) => fighter.characterId);
+        const characters = new Set(characterIds.filter((id): id is number => id !== null));
         // A short round with a single knock-out (or a fall) is not a fight worth paying for.
         const realRound = (durationMs: number, killers: number[]) => durationMs >= config.minPayoutRoundSeconds * 1000
             || (config.minPayoutKillers > 0 && new Set(killers).size >= config.minPayoutKillers);
         const fought = match.rounds.some((round) => realRound(round.durationMs, round.killers));
-        if (!stoppedEarly && fought && ids.length) {
+        const pay = async () => {
+            if (await paidRecently(characters, at)) { dependencies.warn?.("Skipping house points: a fighter in this battle was paid inside the cooldown"); return; }
             // houses() keeps a house whose fighters all left, for the score; only houses still fighting at the end are paid.
             for (const house of match.contenders()) {
                 const amount = config.housePoints.participation + (house === winner ? config.housePoints.win : 0);
                 if (amount <= 0) continue;
                 const reference = `${RESOURCE}:${battle.sessionId}:${house}`;
-                const reservationKey = `${house}|${key}`;
+                const reservationKey = `${house}|${battle.sessionId}`;
                 // Reserve synchronously, before the ledger read and the award await.
                 if (awarded.has(reference) || reserving.has(reservationKey)) continue;
                 reserving.set(reservationKey, { amount, day });
                 try {
-                    const rows = await dependencies.history(house);
-                    const recent = config.housePointsCooldownSeconds > 0 && rows.some((row) => row.resource === RESOURCE && row.status !== "failed"
-                        && ledgerPlayers(row) === key && at - new Date(row.createdAt).getTime() < config.housePointsCooldownSeconds * 1000);
-                    if (recent) { dependencies.warn?.(`Skipping ${house} points: these players fought too recently`); continue; }
                     const paid = await dependencies.total(house, midnight(at))
                         + [...reserving.entries()].filter(([reservedKey, value]) => reservedKey !== reservationKey && reservedKey.startsWith(`${house}|`) && value.day === day)
                             .reduce((total, [, value]) => total + value.amount, 0);
@@ -440,10 +454,21 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
                         continue;
                     }
                     awarded.add(reference);
-                    await dependencies.award(house, amount, reference, house === winner ? "won a house battle" : "fought a house battle", { players: [...ids].sort((a, b) => a - b) });
+                    await dependencies.award(house, amount, reference, house === winner ? "won a house battle" : "fought a house battle", { characters: [...characters].sort((a, b) => a - b), players: ids });
                     housePoints[house] = amount;
                 } catch (error) { awarded.delete(reference); dependencies.warn?.(`Could not award ${house} its points: ${error instanceof Error ? error.message : String(error)}`); }
                 finally { reserving.delete(reservationKey); }
+            }
+        };
+        if (!stoppedEarly && fought && characterIds.length) {
+            if (characters.size !== characterIds.length) dependencies.warn?.("Skipping house points: a fighter has no character, so the cooldown cannot cover them");
+            else if ([...characters].some((id) => paying.has(id))) dependencies.warn?.("Skipping house points: a fighter's other battle is being paid");
+            else {
+                // Reserve the characters synchronously, before the ledger reads and the award awaits.
+                for (const id of characters) paying.add(id);
+                try { await pay(); }
+                catch (error) { dependencies.warn?.(`Could not read the ledger for house points: ${error instanceof Error ? error.message : String(error)}`); }
+                finally { for (const id of characters) paying.delete(id); }
             }
         }
         everyone(battle, stoppedEarly ? "The house battle was stopped" : winner ? `${label(winner)} wins the house battle!` : "The house battle ends level");
