@@ -102,6 +102,8 @@ test("validates expeditions and settings", () => {
     const config = normalizeConfig({ expeditions: { ruins: { entrance: { x: 0, y: 0, z: 0 }, stages: [{ x: 1, y: 1, z: 1, boss: { id: "Troll_Forest" } }] } } });
     assert.deepStrictEqual([config.command, config.maxParty, config.instanced, config.expeditions[0].stages[0].boss], ["expedition", 4, false, { id: "Troll_Forest", health: 2000 }]);
     assert.strictEqual(config.maxEnemiesPerStage, 24, "a run cannot take the whole hmp-npcs budget by default");
+    assert.deepStrictEqual([config.rewardRadius, normalizeConfig({ rewardRadius: 1500 }).rewardRadius], [4000, 1500]);
+    assert.throws(() => normalizeConfig({ rewardRadius: 100 }), /rewardRadius/);
     assert.throws(() => normalizeConfig({ enemiesPerExtraFighter: 9 }), /enemiesPerExtraFighter/);
 });
 

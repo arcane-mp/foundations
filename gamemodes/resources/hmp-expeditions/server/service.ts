@@ -11,8 +11,6 @@ import type { ExpeditionStore } from "./store";
 export const RESOURCE = "hmp-expeditions";
 export const ACTIVITY_ID = "hmp-expeditions:run";
 const HOLD_OWNER = "hmp-expeditions";
-/** Reward only fighters still near the last fight, so an idle member at the entrance does not cash in. */
-const REWARD_RADIUS_CM = 1500;
 /** How long a standing enemy may read as gone before the run fails, for its npcDied to arrive. */
 const VANISH_GRACE_MS = 5000;
 const VANISH_CHECK_MS = 2000;
@@ -133,11 +131,12 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
 
     function stageNumber(party: Party): number { return Math.max(1, (party.run?.stage ?? 0) + 1); }
 
+    /** Reward only fighters still near the last fight, so an idle member at the entrance does not cash in. */
     function nearFight(party: Party, player: ExpeditionPlayer): boolean {
         const stage = party.run?.current;
         if (!stage) return false;
         const { x, y, z } = player.position || { x: NaN, y: NaN, z: NaN };
-        return [x, y, z].every(Number.isFinite) && (x - stage.x) ** 2 + (y - stage.y) ** 2 + (z - stage.z) ** 2 <= REWARD_RADIUS_CM ** 2;
+        return [x, y, z].every(Number.isFinite) && (x - stage.x) ** 2 + (y - stage.y) ** 2 + (z - stage.z) ** 2 <= config.rewardRadius ** 2;
     }
 
     /** Fails the run when a standing enemy is still gone after the grace; true when it did. */

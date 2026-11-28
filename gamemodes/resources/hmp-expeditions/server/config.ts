@@ -17,6 +17,8 @@ export interface ExpeditionsConfig {
     maxEnemiesPerStage: number;
     /** Minimum seconds between two experience payments to the same character, read from hmp-progression reward history. */
     rewardCooldownSeconds: number;
+    /** Centimetres from the last stage's point within which a fighter must be when it clears to be paid. */
+    rewardRadius: number;
     /** Put each run's party, and its enemies, in a virtual world of their own (needs a host that moves players). */
     instanced: boolean;
     /** The first virtual world instanced runs take; each run takes the next free one. */
@@ -113,6 +115,8 @@ export function normalizeConfig(raw: unknown): ExpeditionsConfig {
         // hmp-npcs allows 256 per resource (512 in total) across every run and gamemode.
         maxEnemiesPerStage: integer(source.maxEnemiesPerStage, 24, 1, 256, "maxEnemiesPerStage"),
         rewardCooldownSeconds: integer(source.rewardCooldownSeconds, 3600, 0, 86_400, "rewardCooldownSeconds"),
+        // The pack spawns on a 600 cm ring and chases; a fighter casting at the boss from range is still in the fight.
+        rewardRadius: integer(source.rewardRadius, 4000, 500, 100_000, "rewardRadius"),
         instanced: source.instanced === true,
         firstVirtualWorld: integer(source.firstVirtualWorld, 7000, 1, 1_000_000, "firstVirtualWorld"),
         expeditions: Object.entries(record(source.expeditions)).map(([id, expedition]) => normalizeExpedition(id, expedition, "config")),

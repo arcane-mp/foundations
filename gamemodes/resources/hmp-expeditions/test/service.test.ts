@@ -511,7 +511,9 @@ test("pays only fighters still near the final fight", async () => {
     time.advance(3000);
     for (const npc of [500, 501, 502]) service.npcDied(npc);
     time.advance(2000);
-    p1.position = { x: 2000, y: 0, z: 0 };
+    // The boss stands at x 2000: one fighter casts from 35 m, the other wandered 45 m off.
+    p1.position = { x: 5500, y: 0, z: 0 };
+    p2.position = { x: 6500, y: 0, z: 0 };
     service.npcDied(503);
     await tick();
     assert.strictEqual(finished[0].result, "cleared");

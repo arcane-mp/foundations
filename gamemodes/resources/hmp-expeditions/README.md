@@ -119,6 +119,7 @@ it. Clear-time records live in `expedition-records`.
   "bossHealthPerExtraFighter": 0.75,
   "maxEnemiesPerStage": 24,
   "rewardCooldownSeconds": 3600,
+  "rewardRadius": 4000,
   "instanced": false,
   "firstVirtualWorld": 7000,
   "expeditions": {
@@ -144,6 +145,9 @@ in `hmp-npcs` when it starts. `rewardCooldownSeconds` runs from 0 (no cooldown) 
 from `hmp-progression` reward history, so a server restart does not clear it. That history is bounded:
 the check reads the character's newest 200 rewards from every resource (the most `hmp-progression`
 returns), so a character paid more than 200 times elsewhere inside the cooldown is not held by it.
+`rewardRadius` is in centimetres, from 500 to 100000, and defaults to 4000 (40 m): the pack spawns on a
+6 m ring round the stage's point and chases the party, and a fighter casting at the boss from range is
+still in the fight.
 
 ## Events
 
@@ -153,8 +157,8 @@ Every run that started raises the server event `hmp-expeditions:finished` once, 
 set the record, and each participant with whether they were paid. The experience goes through
 `hmp-progression` by the reference `hmp-expeditions:<session>:<character>`, so a retry never pays twice.
 A character also waits `rewardCooldownSeconds` between clear payments, read from progression history;
-a participant on cooldown is reported unpaid. Only fighters still within 1500 cm of the last fight when
-it clears are paid, so an idle member left at the entrance earns nothing.
+a participant on cooldown is reported unpaid. Only fighters still within `rewardRadius` of the last
+fight's point when it clears are paid, so an idle member left at the entrance earns nothing.
 
 ## Foundations integration
 

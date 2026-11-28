@@ -13,8 +13,8 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   for every fighter past the first, and enemy ownership rotates across the party. Each fighter sees the
   current fight as a ground ring and a HUD with stage, foes and time left. The boss spawns first, and a
   stage that falls short of its orders fails the run, with no experience and no record. Clearing the last
-  stage pays fighters still near the fight `experience` through `hmp-progression`, after a cooldown read
-  from reward history, and keeps the fastest clear as the server record. A wipe, a vanished enemy, a
+  stage pays fighters still within `rewardRadius` (40 m by default) of the fight `experience` through
+  `hmp-progression`, after a cooldown read from reward history, and keeps the fastest clear as the server record. A wipe, a vanished enemy, a
   failed instance, the time limit or `/expedition stop` fails or ends the run, and whatever enemies remain
   are removed. `maxEnemiesPerStage` defaults to 24 and each stage stops at the slots free in `hmp-npcs`;
   a run with a stage cut that way still pays but sets no record.
