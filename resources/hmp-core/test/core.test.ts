@@ -5,7 +5,7 @@ import repositoryModule = require("../server/repository");
 import schemaModule = require("../server/schema");
 import configModule = require("../server/config");
 import ticketsModule = require("../server/tickets");
-import type { HmpCoreAccount, HmpCoreCharacter, HmpCoreGroup, HmpCorePrincipal } from "../types";
+import type { HmpCoreAccount, HmpCoreCharacter, HmpCoreGroup, HmpCorePrincipal, HmpCoreTicketConnection } from "../types";
 import type { HmpMySQLMigration } from "../../hmp-mysql/types";
 import type { CoreConfig, Database, Player, Repository, Scope } from "../server/internal";
 
@@ -683,6 +683,15 @@ test("asks redeemers about a link's ticket and hands the accepted one to the joi
     assert.strictEqual(tickets.api.get(stranger), null);
     assert.strictEqual(tickets.detach(sebastian), true);
     assert.strictEqual(tickets.api.get(sebastian), null);
+
+    // A host that proves the account hands its ID to the redeemers; one that does not leaves it out.
+    const seen: HmpCoreTicketConnection[] = [];
+    const stopSeeing = tickets.api.register({ name: "seen", resource: "site", priority: 20, redeem: (details) => { seen.push(details); return null; } });
+    await tickets.connecting(joining("proven", { accountId: "acc-7" }).connection);
+    await tickets.connecting(joining("plain").connection);
+    assert.strictEqual(seen[0].accountId, "acc-7");
+    assert.ok(!("accountId" in seen[1]));
+    stopSeeing();
 
     // Joined from the server list: no ticket, and nobody is asked.
     asked.length = 0;
