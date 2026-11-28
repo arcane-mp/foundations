@@ -7,6 +7,7 @@ const serverHandlers = new Map();
 const emitted = [];
 const spawned = [];
 const rewards = [];
+const historyLimits = [];
 
 const makePlayer = (id, nickname) => ({
     id, nickname, position: { x: 100, y: 200, z: 300 }, virtualWorld: 0, sent: [],
@@ -55,7 +56,7 @@ const services = {
     "hmp-progression": {
         progression: {
             add: async (characterId, points, options) => { rewards.push([characterId, points, options.reference]); return {}; },
-            history: async () => [],
+            history: async (_characterId, limit) => { historyLimits.push(limit); return []; },
         },
     },
     "hmp-worldstate": {
@@ -100,6 +101,7 @@ async function runServer() {
     assert.ok(finished, "a finished run raises hmp-expeditions:finished");
     assert.deepStrictEqual([finished.payload.result, finished.payload.record], ["cleared", true]);
     assert.deepStrictEqual(rewards, [[10, 500, "hmp-expeditions:exp-1:10"]]);
+    assert.deepStrictEqual(historyLimits, [200], "the cooldown reads as much reward history as hmp-progression returns");
     assert.match((await run("list"))[0], /camp — Poacher Camp.*record 0:0\d by C1/);
     serverHandlers.get("resourceStop")("hmp-expeditions");
 }

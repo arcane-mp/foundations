@@ -141,7 +141,9 @@ resource logs a warning for an enemy id the runtime catalog lacks. Expeditions i
 read-only in game. `maxEnemiesPerStage` runs from 1 to 256 and defaults to 24; `hmp-npcs` allows 256
 per resource and 512 in total, all shared with other gamemodes. Each stage also stops at the slots free
 in `hmp-npcs` when it starts. `rewardCooldownSeconds` runs from 0 (no cooldown) to 86400; it is read
-from `hmp-progression` reward history, so a server restart does not clear it.
+from `hmp-progression` reward history, so a server restart does not clear it. That history is bounded:
+the check reads the character's newest 200 rewards from every resource (the most `hmp-progression`
+returns), so a character paid more than 200 times elsewhere inside the cooldown is not held by it.
 
 ## Events
 

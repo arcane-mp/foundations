@@ -15,7 +15,7 @@ export interface ExpeditionsConfig {
     bossHealthPerExtraFighter: number;
     /** Most enemies one stage may spawn after scaling, boss included; capped by free hmp-npcs capacity. */
     maxEnemiesPerStage: number;
-    /** Minimum seconds between two experience payments to the same character, since this server started. */
+    /** Minimum seconds between two experience payments to the same character, read from hmp-progression reward history. */
     rewardCooldownSeconds: number;
     /** Put each run's party, and its enemies, in a virtual world of their own (needs a host that moves players). */
     instanced: boolean;

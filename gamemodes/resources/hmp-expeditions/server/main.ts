@@ -59,7 +59,8 @@ const expeditions = createExpeditionService({
         catch (_) { return false; }
     },
     reward: async (characterId, experience, reference, reason) => { await Progression.add(characterId, experience, { reference, resource: RESOURCE, reason }); },
-    history: (characterId) => Progression.history(characterId),
+    // The newest rewards from every resource; 200 is the most hmp-progression returns (it defaults to 50).
+    history: (characterId) => Progression.history(characterId, 200),
     emit: (player, event, payload) => player.emit(event, payload),
     say: (player, message) => player.sendChat?.(`[EXPEDITION] ${message}`),
     finished: (event: HmpExpeditionFinished) => { Events.emit(`${RESOURCE}:finished`, event); },
