@@ -7,6 +7,15 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ### Added
 
+- `hmp-core` identifies players by the host's proven `player.accountId` first, stored as `host-account`
+  with `verified` trust. The client-reported Epic Games account ID (32 hexadecimal digits, stored
+  lowercase) stays a linked identifier, `client-epic`, ranked below `hardwareId` in the default
+  `identityOrder` `["accountId", "steamId", "discordId", "hardwareId", "epicId"]`. A modified client
+  cannot take someone else's account by sending their Epic ID when the host supplies `accountId`.
+  Hosts that announce the Epic ID without putting it on the player object still have it carried to the
+  slot by the join-time bridge; a server with its own `data/hmp-core.json` or
+  `HMP_CORE_IDENTITY_ORDER` adds `accountId` and moves `epicId` last to keep this behaviour.
+
 - `design/arcanum` is the single source of the Arcanum look: `tokens.css` (colour, type, space, corners,
   elevation and motion as `--arc-*` properties) and the Cinzel and Spectral fonts with their OFL licences.
   Spectral SemiBold joins Spectral Regular. `scripts/arcanum.mjs` copies it into a resource's `dist/`, so
@@ -34,6 +43,10 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ### Fixed
 
+- `hmp-core` keeps only the latest announced join per nickname, hardware ID and address. Retries that
+  never took a slot appended an entry per join and grew that key for 15 minutes.
+- `hmp-core` bounds a malformed Epic Games account ID to 64 characters and escapes control characters
+  before logging it, so a client value cannot inject extra lines into the server log.
 - `hmp-ui` progress dialogs style their remaining time. The rule targeted `#progress-time` while the element
   carries the `progress-time` class, so it never applied.
 - An `hmp-ui` context option whose icon fails to load gives its text the full width. The icon column stayed,

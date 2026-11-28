@@ -10,11 +10,33 @@ import type {
 } from "../types";
 import type { CoreConfig, CoreOptions, Player, ProviderEntry, Scope } from "./internal";
 
-const IDENTITY_FIELDS: Readonly<Record<string, string>> = Object.freeze({
-    steamId: "client-steam",
-    discordId: "client-discord",
-    hardwareId: "client-hardware",
+const IDENTITY_FIELDS: Readonly<Record<string, { provider: string; trust: string }>> = Object.freeze({
+    accountId: { provider: "host-account", trust: "verified" },
+    steamId: { provider: "client-steam", trust: "asserted" },
+    discordId: { provider: "client-discord", trust: "asserted" },
+    hardwareId: { provider: "client-hardware", trust: "asserted" },
+    epicId: { provider: "client-epic", trust: "asserted" },
 });
+// Steam, Discord and hardware IDs are decimal. An Epic Games account ID is 32 hexadecimal digits, kept lowercase.
+// The host signs its account ID, so that ID's format is the host's to choose.
+const DECIMAL_ID = /^\d+$/;
+const EPIC_ACCOUNT_ID = /^[0-9a-f]{32}$/;
+const LOG_VALUE_LIMIT = 64;
+
+function identitySubject(field: string, value: unknown): string | null {
+    const subject = String(value ?? "").trim();
+    if (!subject || subject.length > 191) return null;
+    if (field === "epicId") return EPIC_ACCOUNT_ID.test(subject.toLowerCase()) ? subject.toLowerCase() : null;
+    if (field === "accountId") return subject;
+    return DECIMAL_ID.test(subject) ? subject : null;
+}
+
+/** Escapes control characters and bounds a client value before it reaches a log line. */
+function logValue(value: unknown): string {
+    const text = String(value ?? "").trim();
+    const bounded = text.length > LOG_VALUE_LIMIT ? `${text.slice(0, LOG_VALUE_LIMIT - 3)}...` : text;
+    return JSON.stringify(bounded).slice(1, -1);
+}
 const CLIENT_PROVIDER = "hmp-client-identity";
 // A load whose player disconnected keeps the character claimed until its loading handlers return, so a new
 // session cannot load it alongside them. This bounds a handler that never returns.
@@ -70,6 +92,9 @@ function createCore(options: CoreOptions) {
     const listPlayers = options.listPlayers || (() => []);
     const logger = options.logger || console;
     const config = options.config || {};
+    const announcedIdentities = options.announcedIdentities || (() => null);
+    // Identity is resolved and then matched to an account, so warn only once for a player's bad Epic ID.
+    const warnedInvalidEpic = new WeakSet<Player>();
     if (!repository || !database) throw new TypeError("repository and database are required");
 
     let state: HmpCoreStatus["state"] = "starting";
@@ -154,14 +179,24 @@ function createCore(options: CoreOptions) {
 
     function clientIdentities(player: Player): HmpCorePrincipal[] {
         const identities: HmpCorePrincipal[] = [];
+        const announced = (announcedIdentities(player) || {}) as Readonly<Record<string, string | undefined>>;
         for (const field of config.identityOrder || Object.keys(IDENTITY_FIELDS)) {
-            const provider = IDENTITY_FIELDS[field];
-            const subject = String((player as unknown as Record<string, unknown>)[field] ?? "").trim();
-            if (provider && /^\d+$/.test(subject)) identities.push({ provider, subject, trust: "asserted" });
+            const definition = IDENTITY_FIELDS[field];
+            // The player object's own field wins; a host that does not carry it still announced it with the join.
+            const own = (player as unknown as Record<string, unknown>)[field];
+            const raw = String(own ?? "").trim() ? own : announced[field];
+            const subject = identitySubject(field, raw);
+            if (field === "epicId" && String(raw ?? "").trim() && !subject && !warnedInvalidEpic.has(player)) {
+                warnedInvalidEpic.add(player);
+                logWarn(`[hmp-core] Ignoring Epic Games account ID '${logValue(raw)}': expected 32 hexadecimal digits`);
+            }
+            if (definition && subject) identities.push({ provider: definition.provider, subject, trust: definition.trust });
         }
         return identities;
     }
 
+    // The host's signed account ID is resolved here too: it ranks first by default and is the only
+    // client-visible identity with verified trust, so a client-reported Epic ID cannot decide ownership.
     registerProvider({
         name: CLIENT_PROVIDER,
         resource: "hmp-core",
