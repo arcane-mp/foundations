@@ -62,8 +62,13 @@ test("caps a scaled stage at the configured ceiling and keeps the boss", () => {
     assert.deepStrictEqual(orders[0], { enemyId: "Troll_Forest", boss: true, maxHealth: 37_000 });
     assert.ok(orders.slice(1).every((order) => order.enemyId === "Goblin_Melee"));
     // A stage can also be clamped to the capacity free in hmp-npcs right now.
-    const limited = new Run(crowded, [1], 0, { ...scaling, maxEnemiesPerStage: 20 }).advance(3);
+    const capped = new Run(crowded, [1], 0, { ...scaling, maxEnemiesPerStage: 5 });
+    assert.strictEqual(capped.advance(5).length, 5);
+    assert.strictEqual(capped.cut, false, "the configured cap is the design, not a cut");
+    const limitedRun = new Run(crowded, [1], 0, { ...scaling, maxEnemiesPerStage: 20 });
+    const limited = limitedRun.advance(3);
     assert.deepStrictEqual(limited.map((order) => order.enemyId), ["Troll_Forest", "Goblin_Melee", "Goblin_Melee"]);
+    assert.strictEqual(limitedRun.cut, true, "a stage cut to the free slots is marked");
     const short = new Run(crowded, [1], 0, scaling);
     assert.deepStrictEqual(short.advance(0), [], "no free slot orders no enemies");
     assert.strictEqual(short.remaining, 0);

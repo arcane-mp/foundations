@@ -52,7 +52,7 @@ export interface HmpExpeditionFinished {
     stages: number;
     defeated: number;
     durationMs: number;
-    /** A new fastest clear on the server. */
+    /** A new fastest clear on the server; never set by a run with a stage cut to the free hmp-npcs slots. */
     record: boolean;
     participants: HmpExpeditionParticipant[];
     finishedAt: string;

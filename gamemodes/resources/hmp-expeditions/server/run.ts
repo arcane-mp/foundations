@@ -29,6 +29,8 @@ export class Run {
     private readonly alive = new Set<number>();
     stage = -1;
     defeated = 0;
+    /** A stage was cut below `maxEnemiesPerStage` by a lower limit (the free hmp-npcs slots), so a clear is not a fair record. */
+    cut = false;
     result: "cleared" | "wiped" | "timeout" | "abandoned" | "stopped" | "failed" | null = null;
 
     constructor(expedition: HmpExpedition, party: number[], startedAt: number, scaling: Scaling) {
@@ -55,18 +57,20 @@ export class Run {
         this.stage += 1;
         const stage = this.current;
         if (!stage) throw new Error("No stage left");
-        const ceiling = Math.max(0, Math.floor(limit));
-        if (!ceiling) return [];
         const extra = Math.max(0, this.party.size - 1);
+        const counts = stage.enemies.map((enemy) => enemy.count + Math.round(enemy.count * this.scaling.enemiesPerExtraFighter * extra));
+        const wanted = Math.min(this.scaling.maxEnemiesPerStage, counts.reduce((sum, count) => sum + count, stage.boss ? 1 : 0));
+        const ceiling = Math.max(0, Math.floor(limit));
+        if (ceiling < wanted) this.cut = true;
+        if (!ceiling) return [];
         const boss: SpawnOrder | null = stage.boss
             ? { enemyId: stage.boss.id, boss: true, maxHealth: Math.round(stage.boss.health * (1 + this.scaling.bossHealthPerExtraFighter * extra)) }
             : null;
         // The boss spawns first and keeps its slot when the pack is cut, so a full stage always has its fight.
         const budget = ceiling - (boss ? 1 : 0);
         const orders: SpawnOrder[] = [];
-        outer: for (const enemy of stage.enemies) {
-            const count = enemy.count + Math.round(enemy.count * this.scaling.enemiesPerExtraFighter * extra);
-            for (let index = 0; index < count; index++) {
+        outer: for (const [kind, enemy] of stage.enemies.entries()) {
+            for (let index = 0; index < counts[kind]; index++) {
                 if (orders.length >= budget) break outer;
                 orders.push({ enemyId: enemy.id, boss: false });
             }

@@ -16,7 +16,8 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   stage pays fighters still near the fight `experience` through `hmp-progression`, after a cooldown read
   from reward history, and keeps the fastest clear as the server record. A wipe, a vanished enemy, a
   failed instance, the time limit or `/expedition stop` fails or ends the run, and whatever enemies remain
-  are removed. `maxEnemiesPerStage` defaults to 24 and each stage stops at the slots free in `hmp-npcs`.
+  are removed. `maxEnemiesPerStage` defaults to 24 and each stage stops at the slots free in `hmp-npcs`;
+  a run with a stage cut that way still pays but sets no record.
   With `instanced: true`, each run takes a virtual world of its own; the shared-world fallback only detects
   a host that throws when its player world is written, since a plain property read back always matches.
   Editors build expeditions in game (`/expedition edit new`, `stage <enemy> [xN]... [boss <enemy> [health]]`,

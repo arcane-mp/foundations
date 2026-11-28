@@ -491,11 +491,14 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
                     member.rewarded = true;
                 } catch (error) { dependencies.warn?.(`Could not reward ${member.nickname}: ${error instanceof Error ? error.message : String(error)}`); }
             }
-            try { record = await store.submit(party.expedition.id, durationMs, participants.filter((member) => finishers.has(member.playerId)).map((member) => member.characterName || member.nickname), at); }
-            catch (error) { dependencies.warn?.(`Could not store the clear time: ${error instanceof Error ? error.message : String(error)}`); }
+            // A stage cut to the free hmp-npcs slots was an easier fight: it still pays, but its time cannot stand as the record.
+            if (!run.cut) {
+                try { record = await store.submit(party.expedition.id, durationMs, participants.filter((member) => finishers.has(member.playerId)).map((member) => member.characterName || member.nickname), at); }
+                catch (error) { dependencies.warn?.(`Could not store the clear time: ${error instanceof Error ? error.message : String(error)}`); }
+            }
         }
         const messages: Record<Result, string> = {
-            cleared: `${party.expedition.label} cleared in ${formatTime(durationMs)}${record ? " — a new record!" : ""}${party.expedition.experience ? ` (+${party.expedition.experience} XP)` : ""}`,
+            cleared: `${party.expedition.label} cleared in ${formatTime(durationMs)}${record ? " — a new record!" : run.cut ? " (a stage was cut short for room, so no record)" : ""}${party.expedition.experience ? ` (+${party.expedition.experience} XP)` : ""}`,
             wiped: `${party.expedition.label} failed: the party fell at stage ${stageNumber(party)}`,
             timeout: `${party.expedition.label} failed: time ran out at stage ${stageNumber(party)}`,
             abandoned: `${party.expedition.label} was abandoned`,

@@ -32,7 +32,9 @@ left standing are removed.
 
 Enemy counts grow with the party but stop at `maxEnemiesPerStage` after scaling, and at the slots
 currently free in `hmp-npcs` (`npcs.status()`). The boss is spawned first and keeps its slot when a pack
-is cut. A stage that spawns fewer enemies than it ordered fails the run: no experience, no record. That
+is cut. A run with a stage cut below `maxEnemiesPerStage` for lack of free slots still pays on a clear,
+since the final fight keeps its boss and the reward cooldown still holds, but it cannot set the record:
+its time came from a smaller pack. A stage that spawns fewer enemies than it ordered fails the run: no experience, no record. That
 covers a boss the runtime catalog lacks and `hmp-npcs` running out of room; a stage that finds no free
 slot at all fails the run as it starts. Concurrent runs share the
 `hmp-npcs` limit for this resource, so keep the cap low when several run at once. A standing enemy that

@@ -340,6 +340,25 @@ test("clamps a stage to the free hmp-npcs capacity", async () => {
     assert.strictEqual(finished[0].result, "stopped");
 });
 
+test("a clear with a stage cut for room pays but sets no record", async () => {
+    const context = setup();
+    context.setCapacity(1);
+    const { time, players: [p1], service, spawned, finished, rewards, store } = context;
+    await service.host(p1, "ruins");
+    await service.start(p1);
+    time.advance(3000);
+    service.npcDied(spawned[0].id);
+    context.vanish(spawned[0].id);
+    time.advance(2000);
+    assert.strictEqual(spawned.at(-1)!.enemyId, "Troll_Forest", "the boss stage fits in the one slot");
+    p1.position = { x: 2000, y: 0, z: 0 };
+    service.npcDied(spawned.at(-1)!.id);
+    await tick();
+    assert.deepStrictEqual([finished[0].result, finished[0].record, rewards.length, store.record("ruins")], ["cleared", false, 1, null]);
+    assert.ok(p1.said.some((line) => /cut short for room, so no record/.test(line)));
+    await service.stop();
+});
+
 test("fails the run when hmp-npcs has no free slots for a stage", async () => {
     const context = setup();
     context.setCapacity(0);
