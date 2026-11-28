@@ -34,7 +34,8 @@ an `hmp-duels` loser kneels.
    every other house that still has a fighter in the match at the end gets `housePoints.participation`;
    a house whose fighters all left gets nothing. Points are paid only after a round
    that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters, so a quick
-   single knock-out, a fall, or a match of forfeits alone pays nobody. A match pays nobody if any
+   single knock-out, a fall, or a match of forfeits alone pays nobody. A round won by forfeit never
+   counts, however long it ran. A match pays nobody if any
    character who fought in it, including one who left, fought in a match this gamemode paid within the
    last `housePointsCooldownSeconds`. The ledger rows record the characters (and player ids) of their
    match, so swapping one alt, reconnecting under a new player id or a restart does not reset it. A house

@@ -236,6 +236,21 @@ test("a house whose only fighter leaves after a real round gets no points", asyn
     await service.stop();
 });
 
+test("a forfeit pays nobody even after the minimum round length", async () => {
+    const context = setup({ rounds: 1 });
+    const { time, players: [p1, , p3], service, awards, finished } = context;
+    await lobby(context, [1, 3]);
+    await service.start(p1);
+    time.advance(3000);
+    time.advance(31_000);
+    assert.strictEqual(await service.leave(p3), true, "the alt stands still for 31 s, then walks out");
+    await tick();
+    assert.strictEqual(finished.length, 1);
+    assert.deepStrictEqual(finished[0].rounds.map((round) => [round.reason, round.durationMs]), [["forfeit", 31_000]]);
+    assert.deepStrictEqual([finished[0].winner, awards.length, finished[0].housePoints], ["gryffindor", 0, {}]);
+    await service.stop();
+});
+
 test("a retired fighter who then disconnects is announced once", async () => {
     const context = setup();
     const { time, players: [p1, , p3], service, activities, finished } = context;

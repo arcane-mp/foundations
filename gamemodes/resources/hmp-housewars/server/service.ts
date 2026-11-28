@@ -430,10 +430,11 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
         // out mid-match must not dodge the cooldown, so it is kept on characters.
         const characterIds = [...match.fighters.values()].map((fighter) => fighter.characterId);
         const characters = new Set(characterIds.filter((id): id is number => id !== null));
-        // A short round with a single knock-out (or a fall) is not a fight worth paying for.
-        const realRound = (durationMs: number, killers: number[]) => durationMs >= config.minPayoutRoundSeconds * 1000
-            || (config.minPayoutKillers > 0 && new Set(killers).size >= config.minPayoutKillers);
-        const fought = match.rounds.some((round) => realRound(round.durationMs, round.killers));
+        // A short round with a single knock-out (or a fall) is not a fight worth paying for, and neither is a
+        // forfeit, however long: an alt can stand still for the round's length and then walk out.
+        const realRound = (round: HmpHouseWarsRoundResult) => round.reason !== "forfeit" && (round.durationMs >= config.minPayoutRoundSeconds * 1000
+            || (config.minPayoutKillers > 0 && new Set(round.killers).size >= config.minPayoutKillers));
+        const fought = match.rounds.some(realRound);
         const pay = async () => {
             if (await paidRecently(characters, at)) { dependencies.warn?.("Skipping house points: a fighter in this battle was paid inside the cooldown"); return; }
             // houses() keeps a house whose fighters all left, for the score; only houses still fighting at the end are paid.
