@@ -16,10 +16,11 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   `/race host <track>`, others `/race join`, and `/race start` puts everyone on a grid, holds them through
   a countdown, and turns their fast travel off until the race ends. The server samples every racer's
   position and judges each gate along the path between samples, lap by lap, so no client reports its own
-  progress. A first sample over `maxSpeedCmPerSecond` keeps the last good position and passes no gates;
-  a lag spike averages out on the next sample, while a teleport stays over the limit and disqualifies on
-  the second sample. The first finisher starts a grace period for the rest. Racers see their next gates
-  as shapes and a HUD with place, lap, gate and time. Editors build tracks in game by flying them
+  progress. A first sample over `maxSpeedCmPerSecond` keeps the last good position and passes no gates,
+  and a teleport stays over the limit and disqualifies on the second sample. A stalled position that
+  repeats the last one does not move the clock, so the catch-up after lag is measured over the whole
+  stall. The first finisher starts a grace period for the rest. Racers see their next gates as shapes and
+  a HUD with place, lap, gate and time. Editors build tracks in game by flying them
   (`/race edit new`, `point`, `save`), stored in `hmp-worldstate` one key per gate, or list them in
   `data/hmp-racing.json`. Personal bests are kept for every finished run; the track record is only taken
   from ranked runs. `minimumRacers` sets how many racers must finish or still be flying for the run to be

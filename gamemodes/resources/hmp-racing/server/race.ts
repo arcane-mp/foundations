@@ -117,12 +117,16 @@ export class Race {
         if (!racer || racer.status !== "racing" || !finite(position)) return [];
         const events: RaceEvent[] = [];
         const from = racer.last;
+        // A stale position repeats the last sample. It is no news, so `lastAt` stays and the catch-up is measured over
+        // the whole stall; holding still banks no more distance than flying at the limit would have covered.
+        if (from && from.x === position.x && from.y === position.y && from.z === position.z) return [];
         const seconds = (at - racer.lastAt) / 1000;
         const speeding = !!from && this.rules.maxSpeedCmPerSecond > 0 && seconds > 0
             && Math.sqrt(distanceSquared(from, position)) / seconds > this.rules.maxSpeedCmPerSecond;
         racer.speedViolations = speeding ? racer.speedViolations + 1 : 0;
         if (racer.speedViolations >= 2) return this.disqualify(playerId, "teleport");
-        // A first violation credits no gates and keeps the last good sample: a lag spike averages out, a jump does not.
+        // A first violation credits no gates and keeps the last good sample: a lag catch-up is back under the limit on
+        // the next sample, a jump is not.
         if (speeding) return [];
         racer.last = { x: position.x, y: position.y, z: position.z };
         racer.lastAt = at;

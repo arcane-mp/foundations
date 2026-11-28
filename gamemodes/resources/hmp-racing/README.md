@@ -33,7 +33,9 @@ A racer is out of the race when they:
 
 A Floo pick from the map is refused while a racer is in the race. On a host that cannot refuse it, a
 jump cannot score a gate: the position stays unchecked, so the next sample still measures over the
-limit. A lag spike instead averages out against the last good position on the following sample.
+limit. A sample that repeats the last position, as a stalled one does, is skipped without moving
+the clock, so the catch-up after lag is measured over the whole stall. Holding still this way never
+covers more ground than flying at the limit would have.
 
 ## Commands
 
@@ -125,8 +127,8 @@ can skip the run, and only ranked runs set the track record. Set it to 1 to rewa
 `maxSpeedCmPerSecond` must sit above the fastest a mount flies on your server, boosts included. The
 default, 150 m/s, is well above a broom's top speed and well below a fast-travel jump. Set it to 0 to
 turn the check off. A first sample over the limit keeps the last good position and credits no gates;
-a real lag catch-up then averages out on the next sample, while a jump stays over the limit and
-disqualifies the racer.
+a repeated position does not move the clock, so a lag catch-up is measured over the whole stall,
+while a jump stays over the limit and disqualifies the racer.
 
 ## Foundations integration
 

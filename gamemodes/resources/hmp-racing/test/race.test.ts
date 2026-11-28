@@ -106,6 +106,37 @@ test("a jump followed by normal flight is caught from the frozen sample", () => 
     assert.strictEqual(race.get(1)?.passed, 0, "no gate survives the disqualification");
 });
 
+test("measures the catch-up after a stalled position over the whole stall", () => {
+    const race = new Race(track(), racers, 0, { maxSpeedCmPerSecond: 5000 });
+    race.seed(1, at(8000), 0);
+    assert.deepStrictEqual(race.update(1, at(8400), 100), [], "40 m/s");
+    // The host's copy stalls for 0.6 s: every tick reads the same point.
+    for (let time = 200; time <= 700; time += 100) assert.deepStrictEqual(race.update(1, at(8400), time), []);
+    assert.strictEqual(race.get(1)?.lastAt, 100, "a repeated sample does not move the clock");
+    // The catch-up is 28 m in one tick but 40 m/s over the stall, and passes the gate it flew through.
+    assert.deepStrictEqual(race.update(1, at(11_200), 800).map((event) => event.type), ["checkpoint"]);
+    assert.strictEqual(race.get(1)?.speedViolations, 0);
+    assert.deepStrictEqual(race.update(1, at(11_600), 900), []);
+    assert.deepStrictEqual(race.update(1, at(12_000), 1000), []);
+    assert.strictEqual(race.get(1)?.status, "racing");
+    assert.strictEqual(race.get(1)?.speedViolations, 0);
+});
+
+test("holding still banks no more than flying at the limit", () => {
+    const race = new Race(track(), racers, 0, { maxSpeedCmPerSecond: 5000 });
+    race.seed(1, at(10_000), 0);
+    // 1 s on the first gate, then a jump to the second, 100 m away: 91 m/s over the wait.
+    for (let time = 100; time <= 1000; time += 100) race.update(1, at(10_000), time);
+    assert.deepStrictEqual(race.update(1, at(20_000), 1100), []);
+    assert.strictEqual(race.get(1)?.passed, 0, "the jump scores no gate");
+    assert.deepStrictEqual(race.update(1, at(20_100), 1200), [{ type: "disqualified", playerId: 1, reason: "teleport" }]);
+    // Waiting the full 2 s makes the jump legal, but it arrives no sooner than flying at 50 m/s.
+    const patient = new Race(track(), racers, 0, { maxSpeedCmPerSecond: 5000 });
+    patient.seed(1, at(10_000), 0);
+    for (let time = 100; time <= 1900; time += 100) patient.update(1, at(10_000), time);
+    assert.deepStrictEqual(patient.update(1, at(20_000), 2000).map((event) => event.type), ["checkpoint", "checkpoint"]);
+});
+
 test("checks the first sample after Go against the racer's grid slot", () => {
     const race = new Race(track(), racers, 0, { maxSpeedCmPerSecond: 5000 });
     race.seed(1, at(0), 0);
