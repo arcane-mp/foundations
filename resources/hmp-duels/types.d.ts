@@ -40,7 +40,7 @@ export interface HmpDuelRankingConfig {
     repeatWindowMinutes: number;
     /** A pair's rated duels in 24 hours past this many are unrated, window or no window (default 10; 0 disables). */
     dailyPairLimit: number;
-    /** A forfeit within this many seconds of the fight starting is unrated (default 3). */
+    /** A duel that ends any way but a knock-out within this many seconds of the fight starting is unrated (default 3). */
     minimumFightSeconds: number;
     /** How many characters `/duel top` lists (default 10, at most 50). */
     leaderboardSize: number;

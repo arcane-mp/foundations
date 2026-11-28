@@ -78,8 +78,8 @@ function createRanking(options: RankingOptions): HmpDuelRanking & {
         const match = await store().record(draft, config.initialRating, config.repeatWindowMinutes, (winner, loser, counts: PairCounts): MatchDecision => {
             decided = true;
             if (!ratedReason) { why = "reason"; return { rated: false, why }; }
-            // A forfeit before the fight, or in its first seconds, is not a result worth rating.
-            if (draft.foughtMs === null || (draft.reason === "forfeit" && draft.foughtMs < config.minimumFightSeconds * 1000)) { why = "early"; return { rated: false, why }; }
+            // A duel ended before the fight, or in its first seconds by anything but a knock-out, is not a result worth rating.
+            if (draft.foughtMs === null || (draft.reason !== "ko" && draft.foughtMs < config.minimumFightSeconds * 1000)) { why = "early"; return { rated: false, why }; }
             // Trading wins over and over would otherwise farm rating, including by rotating characters on the same accounts.
             if (config.repeatLimit > 0 && (counts.recent >= config.repeatLimit || counts.recentAccount >= config.repeatLimit)) { why = "repeat"; return { rated: false, why }; }
             // The rolling window lets a pair play again an hour later; the daily cap still bounds a day of traded wins.

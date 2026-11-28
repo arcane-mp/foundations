@@ -210,7 +210,13 @@ async function earlyForfeits(): Promise<void> {
     const earlyKo = await ranked.record(draft("early-3", 1, 2, "ko", null));
     assert.deepStrictEqual([earlyKo?.match.rated, earlyKo?.unrated], [false, "early"]);
     assert.strictEqual((await ranked.record(draft("early-4", 1, 2, "forfeit", 3000)))?.match.rated, true);
-    assert.deepStrictEqual([ranked.status().rated, ranked.status().unrated], [1, 3]);
+    // Quitting the game a second into the fight is no cheaper than forfeiting it.
+    const quit = await ranked.record(draft("early-5", 3, 4, "disconnect", 1000));
+    assert.deepStrictEqual([quit?.match.rated, quit?.unrated], [false, "early"]);
+    assert.strictEqual((await ranked.record(draft("early-6", 3, 4, "disconnect", 3000)))?.match.rated, true);
+    // A knock-out is a fought result however quick.
+    assert.strictEqual((await ranked.record(draft("early-7", 3, 4, "ko", 1000)))?.match.rated, true);
+    assert.deepStrictEqual([ranked.status().rated, ranked.status().unrated], [3, 4]);
 }
 
 async function dailyCap(): Promise<void> {

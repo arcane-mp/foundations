@@ -67,8 +67,9 @@ drops out of `rank`, `top` and `history`, while its opponent's history keeps the
   `kFactor` (32). Each side uses its own K.
 - Only the endings in `ratedReasons` count: a knock-out, a forfeit or a disconnect by default. A duel
   that ends another way (`died`, unless listed) is kept in the history, unrated. A duel finished before
-  the countdown ends is unrated, as is a forfeit within `minimumFightSeconds` (3 s) of the fight
-  starting; quick forfeits cannot buy a free win.
+  the countdown ends is unrated, as is one that ends any way but a knock-out within
+  `minimumFightSeconds` (3 s) of the fight starting; a quick forfeit or quitting the game cannot buy
+  a free win.
 - Two characters who duel each other more than `repeatLimit` rated times within `repeatWindowMinutes`
   play the rest unrated. The same count applies to the two accounts, stored as low and high account ids
   on the match row, so rotating characters does not reset it. `repeatLimit: 0` turns this off. The limit

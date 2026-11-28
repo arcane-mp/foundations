@@ -15,8 +15,8 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 - `hmp-duels` ranks duelists. Every duel that began and has a winner is recorded against both duelists'
   characters, captured as the countdown starts, in `hmp_duel_matches`; a knock-out, a forfeit or a
   disconnect after the fight starts also moves an Elo rating in `hmp_duel_ratings` (1000 to start, K 48
-  for a character's first ten duels and 32 after, never below 100). A forfeit before the fight, or within
-  its first three seconds, is left unrated. A pair past three rated duels in an hour, or ten in 24 hours,
+  for a character's first ten duels and 32 after, never below 100). A duel that ends before the fight, or
+  any way but a knock-out within its first three seconds, is left unrated. A pair past three rated duels in an hour, or ten in 24 hours,
   plays the rest unrated; the count uses indexed character and account pair columns, so rotating characters
   does not reset it. Rating rows are inserted in id order before they are locked, so two first duels with
   the pair in opposite roles cannot deadlock. `rank`, `top` and `history` share one limit of five queries
