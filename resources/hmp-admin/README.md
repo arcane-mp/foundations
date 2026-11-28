@@ -10,8 +10,8 @@ mutation and then marked completed or failed.
 
 ## Closed-test setup
 
-Until the MafiaHub-backed verified identity provider is ready, configure a temporary secret in the
-server process:
+On a host that does not supply a proven `player.accountId`, no player has a verified identity. For a
+closed test there, configure a temporary secret in the server process:
 
 ```text
 HMP_ADMIN_BOOTSTRAP_SECRET=<a unique random secret of at least 16 bytes>
@@ -20,7 +20,7 @@ HMP_ADMIN_BOOTSTRAP_SECRET=<a unique random secret of at least 16 bytes>
 Staff without a verified admin identity can enter this secret in the masked `/admin` prompt. Access
 exists only for that player connection and is discarded on disconnect or resource restart. The
 secret is read only from the environment, is never stored in MySQL or configuration files, and
-must not be sent through chat. Remove the environment variable once real identities are available.
+must not be sent through chat. Remove the environment variable once the host supplies account IDs.
 
 Do not enable `HMP_ADMIN_UNSAFE_ASSERTED_BANS` for the test. Asserted fallback identities are not
 stable enough for durable bans; staff can still warn, freeze, kick, and inspect those players.
@@ -35,8 +35,9 @@ The default `admin` group grants capabilities cumulatively:
 | 2 | Groups, employment, inventory, player transmog, personal spell grants, banking, treasury inspection, audit history, environment controls |
 | 3 | Verified-identity bans and pending bank reconciliation |
 
-Production access requires a `verified` identity by default. Once identities are live, assign a
-staff account its role through a trusted server-side resource:
+Production access requires a `verified` identity by default. On hosts that supply `player.accountId`,
+`hmp-core` gives every player one (`host-account`), so a role group takes effect as soon as it is
+assigned. Assign a staff account its role through a trusted server-side resource:
 
 ```ts
 const Core = Imports.get("hmp-core");
