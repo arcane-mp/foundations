@@ -8,10 +8,11 @@ import type {
     HmpCoreSession,
     HmpCoreStatus,
 } from "../types";
-import type { CoreConfig, CoreOptions, Player, ProviderEntry, Scope } from "./internal";
+import type { CoreConfig, CoreOptions, IdentityResult, Player, ProviderEntry, Scope } from "./internal";
 
+const HOST_ACCOUNT_PROVIDER = "host-account";
 const IDENTITY_FIELDS: Readonly<Record<string, { provider: string; trust: string }>> = Object.freeze({
-    accountId: { provider: "host-account", trust: "verified" },
+    accountId: { provider: HOST_ACCOUNT_PROVIDER, trust: "verified" },
     steamId: { provider: "client-steam", trust: "asserted" },
     discordId: { provider: "client-discord", trust: "asserted" },
     hardwareId: { provider: "client-hardware", trust: "asserted" },
@@ -195,20 +196,27 @@ function createCore(options: CoreOptions) {
         return identities;
     }
 
-    // The host's signed account ID is resolved here too: it ranks first by default and is the only
-    // client-visible identity with verified trust, so a client-reported Epic ID cannot decide ownership.
+    // The host's signed account ID is resolved here too. It is the only one with verified trust, so it is
+    // the session's principal whenever identityOrder names it and the host supplies it.
     registerProvider({
         name: CLIENT_PROVIDER,
         resource: "hmp-core",
         priority: -1000,
         trust: "asserted",
-        resolve: (player: Player) => clientIdentities(player)[0] || null,
+        resolve: (player: Player) => {
+            const identities = clientIdentities(player);
+            return identities.find((identity) => identity.provider === HOST_ACCOUNT_PROVIDER) || identities[0] || null;
+        },
     });
 
     // A client announces only the IDs it detected on that launch, so Steam or Discord can be missing
     // from one session to the next. The account is found through any announced ID and remembers them all.
     async function accountForClientIdentities(identities: HmpCorePrincipal[], displayName: string): Promise<HmpCoreAccount> {
         const owners = await Promise.all(identities.map((identity) => repository.findIdentity(identity.provider, identity.subject)));
+        const proven = identities.findIndex((identity) => identity.provider === HOST_ACCOUNT_PROVIDER);
+        // A client can send anyone's Steam, Epic, Discord or hardware ID. With the host's proven account ID only
+        // that ID picks the account, and an account found through a client-reported ID is never given it.
+        if (proven >= 0) return linkClientIdentities(await repository.findOrCreateAccount(identities[proven], displayName), identities, owners, proven);
         let match = owners.findIndex(Boolean);
         if (match > 0) {
             // The IDs ranked above the match are new. An account that already holds a different ID of one
@@ -217,7 +225,11 @@ function createCore(options: CoreOptions) {
             if (identities.slice(0, match).some((identity) => held.has(identity.provider))) match = -1;
         }
         const primary = Math.max(match, 0);
-        const account = await repository.findOrCreateAccount(identities[primary], displayName);
+        return linkClientIdentities(await repository.findOrCreateAccount(identities[primary], displayName), identities, owners, primary);
+    }
+
+    // Links the IDs no account holds yet. One another account holds stays with it and is only logged.
+    async function linkClientIdentities(account: HmpCoreAccount, identities: HmpCorePrincipal[], owners: Array<IdentityResult | null>, primary: number): Promise<HmpCoreAccount> {
         for (const [index, identity] of identities.entries()) {
             const owner = owners[index];
             if (owner && owner.account.id !== account.id) {

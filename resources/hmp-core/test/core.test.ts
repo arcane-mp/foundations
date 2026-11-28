@@ -776,46 +776,106 @@ test("matches the host's proven account ID ahead of every client-reported ID", a
     assert.deepStrictEqual(warnings, []);
 });
 
-test("does not let a client-reported Epic ID claim another account", async () => {
-    const { core, warnings } = setup();
+test("does not let a proven account ID take an older account through a client-reported ID", async () => {
+    // The victim's account predates the host's account IDs, so it holds no host-account yet.
+    const victimIds = { steamId: "100", epicId: EPIC_ID, hardwareId: "300" };
+    const forged: Array<Partial<TestPlayer>> = [{ epicId: EPIC_ID }, { steamId: "100" }, { hardwareId: "300" }, { epicId: EPIC_ID, hardwareId: "999" }];
+    for (const [index, ids] of forged.entries()) {
+        const label = Object.keys(ids).join("+");
+        const { core, repository, warnings } = setup();
+        await core.start();
+        const victim = player(1, "Poppy", victimIds);
+        const victimAccount = (await core.connect(victim))?.account;
+        assert.ok(victimAccount);
+        const character = await core.characters.create(victim, { name: "Poppy Sweeting" });
+        await core.disconnect(victim);
+
+        // A modified client sends the victim's IDs alongside its own proven account ID.
+        const attacker = player(2, "Attacker", { accountId: `900${index}`, ...ids });
+        const session = await core.connect(attacker);
+        assert.ok(session);
+        assert.notStrictEqual(session.account.id, victimAccount.id, label);
+        assert.deepStrictEqual(session.principal, { provider: "host-account", subject: `900${index}`, trust: "verified" }, label);
+        assert.deepStrictEqual((await core.characters.list(attacker)).map((item) => item.id), [], label);
+        assert.ok(warnings.some((line) => line.includes(`Account ${session.account.id} shares a`) && line.endsWith(`with account ${victimAccount.id}; the accounts were not merged`)), label);
+        assert.ok(!(await repository.listIdentities(victimAccount.id)).some((identity) => identity.provider === "host-account"), `${label}: no account ID linked to the victim`);
+        assert.deepStrictEqual((await repository.listIdentities(session.account.id)).filter((identity) => identity.provider !== "host-account").map((identity) => identity.subject).sort(), ids.hardwareId === "999" ? ["999"] : [], label);
+        await core.disconnect(attacker);
+
+        const back = player(3, "Poppy", victimIds);
+        assert.strictEqual((await core.connect(back))?.account.id, victimAccount.id, label);
+        assert.deepStrictEqual((await core.characters.list(back)).map((item) => item.id), [character.id], label);
+    }
+});
+
+test("keeps an account that holds a proven account ID with its owner", async () => {
+    const { core, repository, warnings } = setup();
     await core.start();
-    const victim = player(1, "Poppy", { epicId: EPIC_ID, hardwareId: "300" });
-    const victimAccount = (await core.connect(victim))?.account;
-    assert.ok(victimAccount);
-    const character = await core.characters.create(victim, { name: "Poppy Sweeting" });
-    await core.disconnect(victim);
+    const ownerIds = { accountId: "4242", steamId: "100", epicId: EPIC_ID, hardwareId: "300" };
+    const owner = player(1, "Poppy", ownerIds);
+    const account = (await core.connect(owner))?.account;
+    assert.ok(account);
+    const character = await core.characters.create(owner, { name: "Poppy Sweeting" });
+    await core.disconnect(owner);
 
-    // A modified client sends the victim's Epic ID alongside its own proven account and hardware ID.
-    const attacker = player(2, "Attacker", { accountId: "9001", epicId: EPIC_ID, hardwareId: "999" });
-    const session = await core.connect(attacker);
-    assert.ok(session);
-    assert.notStrictEqual(session.account.id, victimAccount.id);
-    assert.deepStrictEqual(session.principal, { provider: "host-account", subject: "9001", trust: "verified" });
-    assert.ok(warnings.some((line) => line.includes(`Account ${session.account.id} shares a client-epic ID with account ${victimAccount.id}`)));
-    assert.deepStrictEqual((await core.characters.list(attacker)).map((item) => item.id), []);
+    const attacker = player(2, "Attacker", { ...ownerIds, accountId: "9001" });
+    const stolen = await core.connect(attacker);
+    assert.ok(stolen);
+    assert.notStrictEqual(stolen.account.id, account.id);
+    assert.deepStrictEqual((await repository.listIdentities(stolen.account.id)).map((identity) => identity.provider), ["host-account"]);
+    assert.strictEqual(warnings.length, 3);
+    await core.disconnect(attacker);
 
-    const back = player(3, "Poppy", { hardwareId: "300", epicId: EPIC_ID });
-    assert.strictEqual((await core.connect(back))?.account.id, victimAccount.id);
+    const back = player(3, "Poppy", { accountId: "4242" });
+    const session = await core.connect(back);
+    assert.strictEqual(session?.account.id, account.id);
+    assert.deepStrictEqual(session?.principal, { provider: "host-account", subject: "4242", trust: "verified" });
     assert.deepStrictEqual((await core.characters.list(back)).map((item) => item.id), [character.id]);
 });
 
-test("links an Epic Games account ID to the account a player made before it was read", async () => {
+test("gives verified trust only for the host's proven account ID", async () => {
+    // The proven ID decides the principal even where a custom identityOrder ranks it last.
+    const { core } = setup({ identityOrder: ["steamId", "hardwareId", "accountId"] });
+    await core.start();
+    const proven = player(1, "Poppy", { accountId: "4242", steamId: "100", hardwareId: "300" });
+    const session = await core.connect(proven);
+    assert.deepStrictEqual(session?.principal, { provider: "host-account", subject: "4242", trust: "verified" });
+    await core.disconnect(proven);
+
+    // A host without account IDs still finds the account through its client-reported IDs, but only asserted.
+    const asserted = player(2, "Poppy", { steamId: "100", hardwareId: "300" });
+    const again = await core.connect(asserted);
+    assert.strictEqual(again?.account.id, session?.account.id);
+    assert.deepStrictEqual(again?.principal, { provider: "client-steam", subject: "100", trust: "asserted" });
+});
+
+test("does not hand a player who proves an account ID the account they made before it", async () => {
     const { core, repository, warnings } = setup();
     await core.start();
-    const accountId = "9002";
     const before = player(1, "Poppy", { hardwareId: "300" });
     const account = (await core.connect(before))?.account;
     assert.ok(account);
     await core.disconnect(before);
 
-    const after = player(2, "Poppy", { accountId, epicId: EPIC_ID, hardwareId: "300" });
+    // Without a staff link the old account is not adopted: client-reported IDs cannot show who owns it.
+    const after = player(2, "Poppy", { accountId: "9002", epicId: EPIC_ID, hardwareId: "300" });
     const session = await core.connect(after);
-    assert.strictEqual(session?.account.id, account.id);
-    assert.deepStrictEqual(session?.principal, { provider: "host-account", subject: accountId, trust: "verified" });
-    assert.deepStrictEqual((await repository.listIdentities(account.id)).map((identity) => identity.provider).sort(), ["client-epic", "client-hardware", "host-account"]);
+    assert.ok(session);
+    assert.notStrictEqual(session.account.id, account.id);
+    assert.deepStrictEqual((await repository.listIdentities(session.account.id)).map((identity) => identity.provider).sort(), ["client-epic", "host-account"]);
+    assert.deepStrictEqual(warnings, [`[hmp-core] Account ${session.account.id} shares a client-hardware ID with account ${account.id}; the accounts were not merged`]);
     await core.disconnect(after);
-    assert.strictEqual((await core.connect(player(3, "Poppy", { accountId, epicId: EPIC_ID, hardwareId: "555" })))?.account.id, account.id);
-    assert.deepStrictEqual(warnings, []);
+
+    // A server owner who links the account ID to the old account before the player's first proven join moves them.
+    const moved = setup();
+    await moved.core.start();
+    const old = (await moved.core.connect(player(1, "Poppy", { hardwareId: "300" })))?.account;
+    assert.ok(old);
+    await moved.core.disconnect(player(1, "Poppy"));
+    await moved.core.accounts.linkIdentity(old.id, { provider: "host-account", subject: "9002", trust: "verified" });
+    const linked = await moved.core.connect(player(2, "Poppy", { accountId: "9002", hardwareId: "300" }));
+    assert.strictEqual(linked?.account.id, old.id);
+    assert.deepStrictEqual(linked?.principal, { provider: "host-account", subject: "9002", trust: "verified" });
 });
 
 test("ignores a malformed Epic Games account ID and one left out of identityOrder", async () => {
