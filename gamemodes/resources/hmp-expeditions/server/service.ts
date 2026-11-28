@@ -15,6 +15,7 @@ const HOLD_OWNER = "hmp-expeditions";
 const REWARD_RADIUS_CM = 1500;
 /** How long a standing enemy may read as gone before the run fails, for its npcDied to arrive. */
 const VANISH_GRACE_MS = 5000;
+const VANISH_CHECK_MS = 2000;
 
 export interface ExpeditionPlayer {
     id: number;
@@ -139,26 +140,32 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
         return [x, y, z].every(Number.isFinite) && (x - stage.x) ** 2 + (y - stage.y) ** 2 + (z - stage.z) ** 2 <= REWARD_RADIUS_CM ** 2;
     }
 
-    function refresh(party: Party): void {
-        if (party.run && party.phase !== "done") {
-            for (const id of party.run.standing()) {
-                let snapshot: HmpNpcSnapshot | null = null;
-                try { snapshot = npcs.get(id); } catch (_) { /* gone */ }
-                if (snapshot?.alive) { party.missing.delete(id); continue; }
-                // hmp-npcs forgets an NPC on its own npcDied, so when several die at once (an area spell) the others
-                // read as gone before their npcDied reaches us. Only one still gone after the grace fails the run.
-                const since = party.missing.get(id);
-                if (since === undefined) {
-                    party.missing.set(id, now());
-                    later(party, () => refresh(party), VANISH_GRACE_MS);
-                    continue;
-                }
-                if (now() - since < VANISH_GRACE_MS) continue;
-                everyone(party, `Stage ${stageNumber(party)}: an enemy vanished; expedition failed`);
-                void finish(party, "failed", true);
-                return;
-            }
+    /** Fails the run when a standing enemy is still gone after the grace; true when it did. */
+    function vanished(party: Party): boolean {
+        if (!party.run || party.phase === "done") return false;
+        for (const id of party.run.standing()) {
+            let snapshot: HmpNpcSnapshot | null = null;
+            try { snapshot = npcs.get(id); } catch (_) { /* gone */ }
+            if (snapshot?.alive) { party.missing.delete(id); continue; }
+            // hmp-npcs forgets an NPC on its own npcDied, so when several die at once (an area spell) the others
+            // read as gone before their npcDied reaches us. Only one still gone after the grace fails the run.
+            const since = party.missing.get(id);
+            if (since === undefined) { party.missing.set(id, now()); continue; }
+            if (now() - since < VANISH_GRACE_MS) continue;
+            everyone(party, `Stage ${stageNumber(party)}: an enemy vanished; expedition failed`);
+            void finish(party, "failed", true);
+            return true;
         }
+        return false;
+    }
+
+    /** Checks the standing enemies while the run lasts, since an hmp-npcs restart removes them all without an event. */
+    function watch(party: Party): void {
+        later(party, () => { if (party.phase === "running" && !vanished(party)) watch(party); }, VANISH_CHECK_MS);
+    }
+
+    function refresh(party: Party): void {
+        if (vanished(party)) return;
         const state = JSON.stringify(hud(party));
         for (const id of inRun(party)) send(id, `${RESOURCE}:hud`, state);
     }
@@ -309,6 +316,7 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
         party.endsAt = now() + config.timeLimitSeconds * 1000;
         for (const id of party.run.party) { try { dependencies.player(id)?.release?.(HOLD_OWNER); } catch (_) { /* left */ } }
         later(party, () => { void finish(party, "timeout", true); }, config.timeLimitSeconds * 1000);
+        watch(party);
         nextStage(party);
     }
 

@@ -365,11 +365,26 @@ test("fails the run when a standing enemy vanishes without an npcDied event", as
     service.npcDied(500);
     time.advance(4000);
     assert.strictEqual(finished.length, 0, "a missing enemy has a grace for its npcDied");
-    time.advance(1000);
+    time.advance(2000);
     await tick();
     assert.ok(p1.said.some((line) => /an enemy vanished; expedition failed/.test(line)));
     assert.deepStrictEqual([finished[0].result, rewards.length, store.record("ruins")], ["failed", 0, null]);
     assert.deepStrictEqual(destroyed, [501], "the standing foe is removed on failure");
+    await service.stop();
+});
+
+test("fails the run when hmp-npcs drops every enemy and nothing else happens", async () => {
+    const context = setup();
+    const { time, players: [p1], service, spawned, finished, rewards } = context;
+    await service.host(p1, "ruins");
+    await service.start(p1);
+    time.advance(3000);
+    // An hmp-npcs restart: every enemy is gone, no event fires and nobody calls refresh.
+    for (const npc of spawned) context.vanish(npc.id);
+    time.advance(8000);
+    await tick();
+    assert.ok(p1.said.some((line) => /an enemy vanished; expedition failed/.test(line)));
+    assert.deepStrictEqual([finished[0].result, rewards.length, context.time.pending()], ["failed", 0, 0]);
     await service.stop();
 });
 

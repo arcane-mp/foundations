@@ -36,7 +36,8 @@ is cut. A stage that spawns fewer enemies than it ordered fails the run: no expe
 covers a boss the runtime catalog lacks and `hmp-npcs` running out of room. Concurrent runs share the
 `hmp-npcs` limit for this resource, so keep the cap low when several run at once. A standing enemy that
 vanishes without `npcDied` (for example, on an `hmp-npcs` restart) also fails the run instead of waiting
-for the time limit. It gets five seconds for its `npcDied` first: `hmp-npcs` forgets an enemy on its own
+for the time limit; the standing enemies are checked every two seconds while a run lasts, since no event
+fires when `hmp-npcs` goes. A missing enemy gets five seconds for its `npcDied` first: `hmp-npcs` forgets an enemy on its own
 `npcDied`, so when several die at once (an area spell), the others read as gone before their deaths
 arrive.
 
