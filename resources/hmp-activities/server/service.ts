@@ -325,12 +325,18 @@ function createActivityService<P extends HmpActivityPlayer>(dependencies: Activi
     }
 
     async function start(sessionId: string, context: HmpActivityOwnerContext<P>): Promise<HmpActivitySession> {
-        return serialized(() => {
+        return serialized(async () => {
             ensureReady();
             const record = findRecord(sessionId); assertAuthorized(record, context);
-            if (!isStartable(record, definitions.get(record.activityId)!)) fail("HMP_ACTIVITY_NOT_STARTABLE", "Player, role, team, or readiness requirements are not satisfied");
+            const definition = definitions.get(record.activityId)!;
+            if (!isStartable(record, definition)) fail("HMP_ACTIVITY_NOT_STARTABLE", "Player, role, team, or readiness requirements are not satisfied");
+            if (definition.canStart) {
+                const player = context.actor || record.participants.find((entry) => entry.playerId === record.leaderPlayerId)?.player || record.participants[0]?.player;
+                if (!player) fail("HMP_ACTIVITY_NOT_STARTABLE", "The activity has no leader to start it");
+                await gate(definition.canStart({ player, character: core.characters.active(player), session: snapshot(record), team: null, role: null, resource: context.resource }), "You cannot start this activity");
+            }
             record.state = "running"; record.startedAt = new Date(now()).toISOString(); record.expiresAt = null; touch(record);
-            const current = snapshot(record); const definition = definitions.get(record.activityId)!;
+            const current = snapshot(record);
             emit("hmp:activities:started", current, { player: context.actor || null });
             safeHook(`${definition.id}.onStarted`, () => definition.onStarted?.({ session: current, player: context.actor }));
             return current;

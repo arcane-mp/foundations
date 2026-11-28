@@ -91,6 +91,8 @@ export interface HmpActivityGateContext<P = HmpActivityPlayer> {
     session: HmpActivitySession | null;
     team: string | null;
     role: string | null;
+    /** Resource that asked an owner API to start, when one supplied it. */
+    resource?: string;
 }
 
 export interface HmpActivityLifecycleContext<P = HmpActivityPlayer> {
@@ -121,6 +123,7 @@ export interface HmpActivityDefinition<P = HmpActivityPlayer> {
     lobbyTtlSeconds?: number;
     canCreate?(context: HmpActivityGateContext<P>): HmpActivityGate | Promise<HmpActivityGate>;
     canJoin?(context: HmpActivityGateContext<P>): HmpActivityGate | Promise<HmpActivityGate>;
+    canStart?(context: HmpActivityGateContext<P>): HmpActivityGate | Promise<HmpActivityGate>;
     onCreated?(context: HmpActivityLifecycleContext<P>): unknown;
     onJoined?(context: HmpActivityLifecycleContext<P>): unknown;
     onLeft?(context: HmpActivityLifecycleContext<P>): unknown;

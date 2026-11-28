@@ -80,6 +80,13 @@ export interface HmpHousePointOptions<P = HmpHousePlayer> {
     metadata?: Record<string, unknown>;
 }
 
+/** Narrows `points.history` and `points.total` to one resource's rows, or to rows written since a moment. */
+export interface HmpHousePointFilter {
+    resource?: string;
+    /** Rows written at or after this moment (a Date, an ISO string or epoch milliseconds). */
+    since?: Date | string | number;
+}
+
 export interface HmpHousePointsApi<P = HmpHousePlayer> {
     get(house: HmpHouseId): Promise<HmpHouseStanding>;
     standings(): Promise<HmpHouseStanding[]>;
@@ -87,7 +94,9 @@ export interface HmpHousePointsApi<P = HmpHousePlayer> {
     award(house: HmpHouseId, amount: number, options: HmpHousePointOptions<P>): Promise<HmpHousePointTransaction>;
     deduct(house: HmpHouseId, amount: number, options: HmpHousePointOptions<P>): Promise<HmpHousePointTransaction>;
     transaction(reference: string): Promise<HmpHousePointTransaction | null>;
-    history(house?: HmpHouseId, limit?: number): Promise<HmpHousePointTransaction[]>;
+    history(house?: HmpHouseId, limit?: number, filter?: HmpHousePointFilter): Promise<HmpHousePointTransaction[]>;
+    /** The sum of a house's rows that did not fail (completed and pending), with no row limit; for caps and quotas. */
+    total(house: HmpHouseId, filter?: HmpHousePointFilter): Promise<number>;
     pending(limit?: number): Promise<HmpHousePointTransaction[]>;
     recover(reference: string): Promise<HmpHousePointTransaction>;
 }

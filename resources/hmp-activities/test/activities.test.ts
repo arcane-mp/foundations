@@ -83,6 +83,25 @@ async function run(): Promise<void> {
     time += 31_000;
     assert.strictEqual(await service.sweep(), 1);
     assert.strictEqual(service.sessions.get(expiring.id), null);
+
+    const starts: Array<{ player: number; resource?: string }> = [];
+    const disposeGated = service.definitions.register({
+        id: "duel:ranked", resource: "hmp-ranked", label: "Ranked duel", minimumPlayers: 2, maximumPlayers: 2, requireReady: false,
+        canStart: ({ player: starter, session, resource }) => {
+            starts.push({ player: starter.id, resource });
+            return resource === "hmp-ranked" || `Start ${session?.title} from the duel menu`;
+        },
+    });
+    const ranked = await service.sessions.create(leader, "duel:ranked", { title: "Ranked bout" });
+    await assert.rejects(service.sessions.start(ranked.id, { actor: leader }), /not satisfied/);
+    assert.strictEqual(starts.length, 0, "canStart runs only after the session's own requirements pass");
+    await service.sessions.join(caster, ranked.id);
+    await assert.rejects(service.sessions.start(ranked.id, { actor: leader }), (error: unknown) => error instanceof HmpActivityError && error.code === "HMP_ACTIVITY_DENIED" && /Start Ranked bout from the duel menu/.test(error.message));
+    assert.strictEqual(service.sessions.get(ranked.id)?.state, "forming", "a denied start leaves the lobby forming");
+    assert.strictEqual((await service.sessions.start(ranked.id, { resource: "hmp-ranked" })).state, "running");
+    assert.deepStrictEqual(starts, [{ player: leader.id, resource: undefined }, { player: leader.id, resource: "hmp-ranked" }], "the leader stands in for an owner start without an actor");
+    await service.sessions.cancel(ranked.id, { resource: "hmp-ranked", reason: "test over" });
+    await disposeGated();
     assert.ok(emitted.some((entry) => entry.name === "hmp:activities:started"));
     assert.ok(emitted.some((entry) => entry.name === "hmp:activities:completed"));
     assert.strictEqual(await dispose(), 0);

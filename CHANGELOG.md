@@ -7,6 +7,31 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ### Added
 
+- The `hmp-housewars` gamemode: houses fight each other for the House Cup. Players join a battle lobby as
+  their character's house (`/housewars host [arena]`, `join`, `start`), and the houses fight
+  best-of-`rounds` elimination rounds in an arena, a configured one or open ground around the host.
+  `/activities start` cannot start a hosted lobby; the housewars owner API can. Each round puts every
+  house in its own ground-snapped corner through a countdown. Fighters of different houses are then
+  hostile to each other through host pair overrides, with lock-on and a kneel finish, while housemates
+  never are, and an `hmp-pvp` rule keeps every hit non-lethal. Everyone is held inside the arena until the
+  round ends. A round goes to the last house standing, or to the one with the most fighters up when time
+  runs out. Health recovery runs only between rounds. Fighters who leave are out of the match, so the
+  battle's PvP rule no longer covers them, but the finished event still lists them with `left: true`, and
+  kneeling fighters stand up when released. The winning house earns `housePoints.win` and every house
+  with a fighter left at the end `housePoints.participation` through the `hmp-houses` ledger, but only after
+  a round that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters; a forfeit
+  round never counts. A match
+  pays nobody when any character who fought in it, leavers included, was in a paid match inside the
+  cooldown, and a daily cap limits each house; both come from the ledger (character ids in each row's
+  metadata, and `points.total` since midnight), so they survive a restart and a new player id. Every match that started raises
+  `hmp-housewars:finished` once, also with a stopped result when the resource stops or the activity is
+  cancelled outside the gamemode.
+- `hmp-activities` definitions take a `canStart` gate beside `canCreate` and `canJoin`. It runs after the
+  player, role, team and readiness checks and receives the starting player and the `resource` of the owner
+  context, so a gameplay resource can refuse `/activities start` and still start through its own owner API.
+- `hmp-houses` `points.history(house, limit, filter)` takes an optional `{ resource, since }` filter, and
+  `points.total(house, filter)` sums a house's rows that did not fail with no row limit. `since` is measured
+  as an age on the database's clock, so the MySQL session time zone does not shift it.
 - `hmp-core` identifies players by the host's proven `player.accountId` on hosts that supply it, stored
   as `host-account` with `verified` trust. When a player brings one, only that ID picks their account:
   client-reported Steam, Epic Games, Discord and hardware IDs are linked to it only when no other account
