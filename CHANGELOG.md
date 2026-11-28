@@ -14,12 +14,14 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   current fight as a ground ring and a HUD with stage, foes and time left. The boss spawns first, and a
   stage that falls short of its orders fails the run, with no experience and no record. Clearing the last
   stage pays fighters still within `rewardRadius` (40 m by default) of the fight `experience` through
-  `hmp-progression`, after a cooldown read from reward history, and keeps the fastest clear as the server record. A wipe, a vanished enemy, a
-  failed instance, the time limit or `/expedition stop` fails or ends the run, and whatever enemies remain
-  are removed. `maxEnemiesPerStage` defaults to 24 and each stage stops at the slots free in `hmp-npcs`;
-  a run with a stage cut that way still pays but sets no record.
-  With `instanced: true`, each run takes a virtual world of its own; the shared-world fallback only detects
-  a host that throws when its player world is written, since a plain property read back always matches.
+  `hmp-progression`, after a cooldown read from reward history, and keeps the fastest clear as the server
+  record. A wipe, a vanished enemy, a failed instance, the time limit or `/expedition stop` fails or ends
+  the run, and whatever enemies remain are removed. Standing enemies are checked every two seconds, and one
+  gets five seconds for its `npcDied` before it counts as vanished; a stage with no free `hmp-npcs` slot
+  fails the run. `maxEnemiesPerStage` defaults to 24 and each stage stops at the slots free in `hmp-npcs`;
+  a run with a stage cut that way still pays but sets no record. With `instanced: true`, each run takes a
+  virtual world of its own; the shared-world fallback only detects a host that throws when its player
+  world is written, since a plain property read back always matches.
   Editors build expeditions in game (`/expedition edit new`, `stage <enemy> [xN]... [boss <enemy> [health]]`,
   `save`), stored in `hmp-worldstate` one key per stage, or list them in `data/hmp-expeditions.json`.
   Every run that started, including one stopped by the resource, raises `hmp-expeditions:finished`.
