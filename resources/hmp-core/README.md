@@ -23,12 +23,6 @@ proven `accountId` present, ownership comes from that ID and a conflicting Epic 
 about. The 32-hexadecimal-digit format comes from Epic's documented account ID format and has not
 been checked against a live Epic Games client.
 
-The join-time bridge in `server/announced.ts` carries the Epic ID from `playerConnecting` to the player
-who takes the slot on hosts that do not put `epicId` on the player object. Only hosts older than the
-supported HogwartsMP `1.11` baseline in [COMPATIBILITY.md](../../COMPATIBILITY.md) need it; on
-supported hosts (`1.11` or newer) the player object carries `epicId` itself and the bridge is
-redundant. Those older hosts are outside the compatibility matrix.
-
 A client announces only the identifiers it detected on that launch, so Steam or Discord can be missing
 from one session to the next. Every announced identifier is linked to the account, and a later session
 is matched through any of them, ranked by `identityOrder`. An identifier already linked to another

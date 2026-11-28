@@ -5,16 +5,14 @@ import repositoryModule = require("../server/repository");
 import schemaModule = require("../server/schema");
 import configModule = require("../server/config");
 import ticketsModule = require("../server/tickets");
-import announcedModule = require("../server/announced");
 import type { HmpCoreAccount, HmpCoreCharacter, HmpCoreGroup, HmpCorePrincipal } from "../types";
 import type { HmpMySQLMigration } from "../../hmp-mysql/types";
-import type { AnnouncedIdentities, CoreConfig, Database, Player, Repository, Scope } from "../server/internal";
+import type { CoreConfig, Database, Player, Repository, Scope } from "../server/internal";
 
 const { createCore } = coreModule;
 const { createRepository } = repositoryModule;
 const { loadConfig } = configModule;
 const { createTickets, hostAtLeast } = ticketsModule;
-const { createAnnounced, MAX_PENDING } = announcedModule;
 const { migrations } = schemaModule;
 
 interface TestPlayer extends Player { mafiahubId?: string; epicId?: string }
@@ -108,11 +106,7 @@ function memoryRepository() {
     return repository;
 }
 
-function setup(
-    overrides: Partial<CoreConfig> = {},
-    onEmit?: (name: string) => Promise<void> | undefined,
-    announcedIdentities?: (player: Player) => AnnouncedIdentities | null,
-) {
+function setup(overrides: Partial<CoreConfig> = {}, onEmit?: (name: string) => Promise<void> | undefined) {
     const emitted: RecordedEvent[] = [];
     const warnings: string[] = [];
     const migrated: Array<{ resource: string; list: HmpMySQLMigration[] }> = [];
@@ -138,7 +132,6 @@ function setup(
             identityOrder: ["accountId", "steamId", "discordId", "hardwareId", "epicId"],
             ...overrides,
         },
-        announcedIdentities,
     });
     return { core, repository, emitted, migrated, warnings };
 }
@@ -744,11 +737,10 @@ test("turns away a join without an accepted ticket only when required on a host 
 });
 const EPIC_ID = "0123456789abcdef0123456789abcdef";
 
-test("links an Epic ID announced with the join below the player's hardware ID", async () => {
-    const joins = new Map<number, AnnouncedIdentities>([[1, { epicId: EPIC_ID.toUpperCase() }]]);
-    const { core, repository } = setup({}, undefined, (candidate) => joins.get(Number(candidate.id)) || null);
+test("links an Epic ID below the player's hardware ID", async () => {
+    const { core, repository } = setup();
     await core.start();
-    const epic = player(1, "Poppy", { hardwareId: "300" });
+    const epic = player(1, "Poppy", { epicId: EPIC_ID.toUpperCase(), hardwareId: "300" });
     const session = await core.connect(epic);
     assert.ok(session);
     assert.deepStrictEqual(session.principal, { provider: "client-hardware", subject: "300", trust: "asserted" });
@@ -916,56 +908,5 @@ test("puts the proven account ID first and Epic Games last in the default identi
     } as unknown as Parameters<typeof loadConfig>[0];
     assert.deepStrictEqual(loadConfig(Hmp, { env: {} }).identityOrder, ["accountId", "steamId", "discordId", "hardwareId", "epicId"]);
     assert.deepStrictEqual(loadConfig(Hmp, { env: { HMP_CORE_IDENTITY_ORDER: "accountId, epicId" } }).identityOrder, ["accountId", "epicId"]);
-});
-
-test("hands the identifiers a join announced to the player who took its slot", () => {
-    let at = 1_000;
-    const announced = createAnnounced({ now: () => at });
-    const join = { nickname: "Poppy", hardwareId: "300", ip: "198.51.100.2" };
-    assert.strictEqual(announced.remember({ ...join, epicId: "" }), false);
-    assert.strictEqual(announced.remember({ ...join, epicId: ` ${EPIC_ID} ` }), true);
-
-    const other = player(6, "Someone Else", { hardwareId: "300", ip: "198.51.100.2" });
-    assert.strictEqual(announced.attach(other), null);
-    const joined = player(7, "Poppy", { hardwareId: "300", getIP: () => "198.51.100.2" });
-    assert.deepStrictEqual(announced.attach(joined), { epicId: EPIC_ID });
-    assert.deepStrictEqual(announced.get(7), { epicId: EPIC_ID });
-    assert.strictEqual(announced.attach(player(8, "Poppy", { hardwareId: "300", ip: "198.51.100.2" })), null, "one join, one slot");
-    assert.strictEqual(announced.detach(joined), true);
-    assert.strictEqual(announced.get(7), null);
-
-    announced.remember({ ...join, epicId: EPIC_ID });
-    at += 15 * 60_000;
-    assert.strictEqual(announced.attach(player(9, "Poppy", { hardwareId: "300", ip: "198.51.100.2" })), null, "a stale join expires");
-});
-
-test("keeps only the latest announced join for a key", () => {
-    const announced = createAnnounced({ now: () => 1_000 });
-    const join = { nickname: "Poppy", hardwareId: "300", ip: "198.51.100.2" };
-    const newer = "fedcba9876543210fedcba9876543210";
-    assert.strictEqual(announced.remember({ ...join, epicId: EPIC_ID }), true);
-    assert.strictEqual(announced.remember({ ...join, epicId: newer }), true);
-
-    const joined = player(7, "Poppy", { hardwareId: "300", ip: "198.51.100.2" });
-    assert.deepStrictEqual(announced.attach(joined), { epicId: newer });
-    assert.strictEqual(announced.attach(player(8, "Poppy", { hardwareId: "300", ip: "198.51.100.2" })), null, "one join, one slot");
-});
-
-test("a join with no announced ID clears a stale announcement with the same key", () => {
-    const announced = createAnnounced({ now: () => 1_000 });
-    const join = { nickname: "Poppy", hardwareId: "300", ip: "198.51.100.2" };
-    assert.strictEqual(announced.remember({ ...join, epicId: EPIC_ID }), true);
-    assert.strictEqual(announced.remember({ ...join, epicId: "" }), false);
-    assert.strictEqual(announced.attach(player(7, "Poppy", { hardwareId: "300", ip: "198.51.100.2" })), null);
-});
-
-test("caps the announcements a flood of joins that never take a slot can leave behind", () => {
-    const announced = createAnnounced({ now: () => 1_000 });
-    assert.strictEqual(announced.remember({ nickname: "First", hardwareId: "1", ip: "198.51.100.1", epicId: EPIC_ID }), true);
-    for (let index = 1; index <= MAX_PENDING; index += 1) {
-        announced.remember({ nickname: `Join ${index}`, hardwareId: String(index + 1), ip: "198.51.100.2", epicId: EPIC_ID });
-    }
-    assert.strictEqual(announced.attach(player(1, "First", { hardwareId: "1", ip: "198.51.100.1" })), null, "the oldest key was evicted");
-    assert.ok(announced.attach(player(2, `Join ${MAX_PENDING}`, { hardwareId: String(MAX_PENDING + 1), ip: "198.51.100.2" })), "the newest key survives");
 });
 // Source-level TypeScript tests.

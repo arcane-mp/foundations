@@ -93,7 +93,6 @@ function createCore(options: CoreOptions) {
     const listPlayers = options.listPlayers || (() => []);
     const logger = options.logger || console;
     const config = options.config || {};
-    const announcedIdentities = options.announcedIdentities || (() => null);
     // Identity is resolved and then matched to an account, so warn only once for a player's bad Epic ID.
     const warnedInvalidEpic = new WeakSet<Player>();
     if (!repository || !database) throw new TypeError("repository and database are required");
@@ -180,12 +179,9 @@ function createCore(options: CoreOptions) {
 
     function clientIdentities(player: Player): HmpCorePrincipal[] {
         const identities: HmpCorePrincipal[] = [];
-        const announced = (announcedIdentities(player) || {}) as Readonly<Record<string, string | undefined>>;
         for (const field of config.identityOrder || Object.keys(IDENTITY_FIELDS)) {
             const definition = IDENTITY_FIELDS[field];
-            // The player object's own field wins; a host that does not carry it still announced it with the join.
-            const own = (player as unknown as Record<string, unknown>)[field];
-            const raw = String(own ?? "").trim() ? own : announced[field];
+            const raw = (player as unknown as Record<string, unknown>)[field];
             const subject = identitySubject(field, raw);
             if (field === "epicId" && String(raw ?? "").trim() && !subject && !warnedInvalidEpic.has(player)) {
                 warnedInvalidEpic.add(player);

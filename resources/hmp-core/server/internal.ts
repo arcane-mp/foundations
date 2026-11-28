@@ -11,9 +11,6 @@ import type {
 export type Player = HogwartsMpPlayer;
 export type Database = HmpMySQL;
 export type Scope = "account" | "character";
-/** A client identifier announced with a join but absent from the player object (see announced.ts). */
-export type AnnouncedField = "epicId";
-export type AnnouncedIdentities = Readonly<Partial<Record<AnnouncedField, string>>>;
 
 export interface CoreConfig extends Record<string, unknown> {
     maxCharacters: number;
@@ -71,8 +68,6 @@ export interface CoreOptions {
     listPlayers?: () => Player[];
     logger?: Pick<HmpLogger, "error"> & Partial<Pick<HmpLogger, "warn">>;
     config?: Partial<CoreConfig>;
-    /** Client identifiers this player's join announced that the player object does not carry, such as `epicId`. */
-    announcedIdentities?: (player: Player) => AnnouncedIdentities | null;
 }
 
 export interface ProviderEntry extends HmpCoreIdentityProvider<Player> {
