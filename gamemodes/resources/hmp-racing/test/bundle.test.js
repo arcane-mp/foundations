@@ -97,8 +97,9 @@ async function runServer() {
 
     // The countdown and samples run on real timers here.
     await new Promise((resolve) => setTimeout(resolve, 1150));
-    for (const x of [0, 1000, 2000]) { editor.position = { x, y: 200, z: 300 }; await new Promise((resolve) => setTimeout(resolve, 120)); }
+    // The rival falls before anyone finishes, so the run is no longer ranked.
     serverHandlers.get("playerDied")(rival);
+    for (const x of [0, 1000, 2000]) { editor.position = { x, y: 200, z: 300 }; await new Promise((resolve) => setTimeout(resolve, 120)); }
     await new Promise((resolve) => setTimeout(resolve, 150));
     await tick();
     const finished = emitted.find((entry) => entry.name === "hmp-racing:finished");
