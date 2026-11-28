@@ -58,7 +58,9 @@ test("a house whose fighters all leave forfeits the round and the match", () => 
     const match = new Match([...lions, ...snakes, fighter(5, "ravenclaw")], 3);
     match.startRound(0);
     assert.strictEqual(match.leave(5, 100)?.winner ?? "open", "open", "two houses still stand");
-    assert.strictEqual(match.fighters.has(5), false, "a leaver leaves the fighter set");
+    assert.deepStrictEqual([match.inMatch(5), match.fighters.get(5)?.left], [false, true], "a leaver is out of the match but stays on the record");
+    assert.deepStrictEqual(match.houses(), ["gryffindor", "ravenclaw", "slytherin"], "their house stays beside its score");
+    assert.strictEqual(match.leave(5, 150), null, "and cannot leave twice");
     assert.strictEqual(match.hostile(5, 1), false);
     assert.strictEqual(match.leave(3, 200), null);
     assert.deepStrictEqual(match.leave(4, 300), { round: 1, winner: "gryffindor", reason: "forfeit", durationMs: 300, killers: [] });

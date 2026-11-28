@@ -26,6 +26,8 @@ export interface HmpHouseWarsFighter {
     knockouts: number;
     /** Rounds this fighter was still standing at the end of. */
     survived: number;
+    /** Retired or disconnected before the match ended; still listed, so `houses` and `score` match the fighters. */
+    left: boolean;
 }
 
 export interface HmpHouseWarsRoundResult {

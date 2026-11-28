@@ -30,7 +30,7 @@ export class Match {
 
     constructor(fighters: FighterInput[], maxRounds: number) {
         if (!Number.isSafeInteger(maxRounds) || maxRounds < 1 || maxRounds % 2 === 0) throw new RangeError("A match is an odd number of rounds");
-        for (const fighter of fighters) this.fighters.set(fighter.playerId, { ...fighter, knockouts: 0, survived: 0 });
+        for (const fighter of fighters) this.fighters.set(fighter.playerId, { ...fighter, knockouts: 0, survived: 0, left: false });
         if (this.houses().length < 2) throw new Error("A house battle needs fighters from at least two houses");
         this.maxRounds = maxRounds;
         this.winsNeeded = Math.ceil(maxRounds / 2);
@@ -50,6 +50,11 @@ export class Match {
     /** Fighters still in the match, not gone for good. */
     active(): HmpHouseWarsFighter[] {
         return [...this.fighters.values()].filter((fighter) => !this.gone.has(fighter.playerId));
+    }
+
+    /** Whether the player is a fighter who has not left; `fighters` keeps those who left, for the record. */
+    inMatch(playerId: number): boolean {
+        return this.fighters.has(playerId) && !this.gone.has(playerId);
     }
 
     isStanding(playerId: number): boolean {
@@ -93,12 +98,13 @@ export class Match {
 
     /** A fighter left the match for good (disconnect or retirement). */
     leave(playerId: number, at: number): HmpHouseWarsRoundResult | null {
-        if (!this.fighters.has(playerId) || this.gone.has(playerId)) return null;
+        if (!this.inMatch(playerId)) return null;
+        // Kept in `fighters` with `left` set, so the result still lists them beside their house's score;
+        // inMatch() is false from now on, so no pair treats them as a fighter.
         this.gone.add(playerId);
-        // Out of the fighter set too: no pair may treat them as a fighter after they leave.
-        this.fighters.delete(playerId);
-        if (!this.live) return null;
+        this.fighters.get(playerId)!.left = true;
         this.standing.delete(playerId);
+        if (!this.live) return null;
         return this.settle(at, "forfeit");
     }
 

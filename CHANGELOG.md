@@ -15,8 +15,9 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   hostile to each other through host pair overrides, with lock-on and a kneel finish, while housemates
   never are, and an `hmp-pvp` rule keeps every hit non-lethal. Everyone is held inside the arena until the
   round ends. A round goes to the last house standing, or to the one with the most fighters up when time
-  runs out. Health recovery runs only between rounds. Fighters who leave are removed from the match's
-  fighter set, and kneeling fighters stand up when released. The winning house earns `housePoints.win`
+  runs out. Health recovery runs only between rounds. Fighters who leave are out of the match, so the
+  battle's PvP rule no longer covers them, but the finished event still lists them with `left: true`, and
+  kneeling fighters stand up when released. The winning house earns `housePoints.win`
   and every house that fought `housePoints.participation` through the `hmp-houses` ledger, but only after
   a round that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters. The
   cooldown applies to the same house and the same group of fighters, and a daily cap limits each house;

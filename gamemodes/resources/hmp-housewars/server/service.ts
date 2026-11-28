@@ -231,8 +231,8 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
             const victimBattle = battleFor(hit.victimId);
             const battle = casterBattle?.match ? casterBattle : victimBattle?.match ? victimBattle : null;
             if (!battle) return undefined;
-            const casterIn = casterBattle === battle && battle.match!.fighters.has(hit.casterId);
-            const victimIn = victimBattle === battle && battle.match!.fighters.has(hit.victimId);
+            const casterIn = casterBattle === battle && battle.match!.inMatch(hit.casterId);
+            const victimIn = victimBattle === battle && battle.match!.inMatch(hit.victimId);
             // Abstaining would hand a one-sided hit back to the server's default rules.
             if (casterIn !== victimIn) return false;
             if (!casterIn) return undefined;
@@ -313,15 +313,15 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
         const present = new Set(after?.participants.map((entry) => entry.playerId) ?? []);
         for (const fighter of fighters) if (!present.has(fighter.playerId)) match.leave(fighter.playerId, now());
         battle.match = match;
-        for (const fighter of match.fighters.values()) { battle.touched.add(fighter.playerId); dependencies.setRecovery(fighter.playerId, false); }
+        for (const fighter of match.active()) { battle.touched.add(fighter.playerId); dependencies.setRecovery(fighter.playerId, false); }
         const abort = async (reason: string) => {
             everyone(battle, reason);
             await activities.sessions.cancel(battle.sessionId, { resource: RESOURCE, reason }).catch(() => undefined);
             if (battles.has(battle.sessionId)) release(battle);
         };
-        if (match.houses().length < 2) { await abort("Not enough fighters are left to fight"); return; }
+        if (match.contenders().length < 2) { await abort("Not enough fighters are left to fight"); return; }
         if (!pairUp(battle)) { await abort("The server has no room for this battle's PvP pairs right now"); return; }
-        everyone(battle, `House battle: ${match.houses().map(label).join(" v ")}, best of ${config.rounds}`);
+        everyone(battle, `House battle: ${match.contenders().map(label).join(" v ")}, best of ${config.rounds}`);
         countdown(battle);
     }
 

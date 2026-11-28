@@ -38,8 +38,10 @@ an `hmp-duels` loser kneels.
    total come from the `hmp-houses` ledger, so they survive a restart.
 
 A fighter who falls to anything other than a rival (`playerDied`) is down for the round, and stands up
-when released. A fighter who retires with `/housewars leave` or disconnects is out of the match, removed
-from its fighter set, and stood up. The activity keeps a retired fighter as a member until the match ends.
+when released. A fighter who retires with `/housewars leave` or disconnects is out of the match and stood
+up; the battle's PvP rule no longer treats them as a fighter. The match keeps them on its record with
+`left: true`, so the finished event still lists them and their house beside the score. The activity keeps a
+retired fighter as a member until the match ends.
 
 ## Commands
 
@@ -106,7 +108,8 @@ field it rejected.
 Every match that started raises the server event `hmp-housewars:finished` once, including when the
 resource stops or the activity is cancelled from outside; those events have `stopped: true` and no
 winner. The payload holds the houses, the winner, the score,
-each round's result, each fighter's knock-outs and rounds survived, and the House Cup points
+each round's result, each fighter's knock-outs and rounds survived (fighters who left are included with
+`left: true`, and every house in `score` is in `houses`), and the House Cup points
 awarded. Each award's ledger reference is `hmp-housewars:<session>:<house>`, so a retried award is
 never paid twice.
 

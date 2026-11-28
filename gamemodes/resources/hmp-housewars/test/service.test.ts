@@ -205,6 +205,8 @@ test("a house whose fighters leave forfeits; retiring keeps the activity until t
     await tick();
     assert.strictEqual(finished[0].winner, "gryffindor");
     assert.deepStrictEqual(finished[0].rounds.map((round) => round.reason), ["forfeit"]);
+    assert.deepStrictEqual(finished[0].houses, Object.keys(finished[0].score), "a house whose fighters all left is still listed beside its score");
+    assert.deepStrictEqual(finished[0].fighters.map((fighter) => [fighter.playerId, fighter.left]), [[1, false], [2, false], [3, true], [4, true]]);
     assert.deepStrictEqual([awards.length, finished[0].housePoints], [0, {}], "a match of forfeits only pays nobody");
     await service.stop();
 });
@@ -311,7 +313,7 @@ test("no payout for a seconds-long match with one knock-out or a fall", async ()
     await service.stop();
 });
 
-test("drops a leaver from the fighter set, so outsiders can hit them again", async () => {
+test("takes a leaver out of the match, so outsiders can hit them again", async () => {
     const context = setup();
     const { time, players: [p1, , p3], service, hit } = context;
     await lobby(context);
@@ -361,14 +363,16 @@ test("re-reads the session after the membership awaits", async () => {
 
 test("re-reads the session after start", async () => {
     const context = setup({ rounds: 1 }, undefined, undefined, 5);
-    const { time, players: [p1, , , , p5], service, finished } = context;
+    const { time, players: [p1, , , , p5], service, finished, hit } = context;
     await lobby(context, [1, 3, 5]);
     await service.start(p1);
     time.advance(3000);
+    assert.strictEqual(hit(5, 1), false, "the fighter who left during the start is no fighter");
     service.defeated(3, 1);
     await tick();
-    assert.strictEqual(finished.length, 1);
-    assert.strictEqual(finished[0].fighters.some((fighter) => fighter.playerId === p5.id), false);
+    assert.strictEqual(finished.length, 1, "and cannot keep Ravenclaw alive");
+    assert.strictEqual(finished[0].winner, "gryffindor");
+    assert.strictEqual(finished[0].fighters.find((fighter) => fighter.playerId === p5.id)?.left, true);
     await service.stop();
 });
 
