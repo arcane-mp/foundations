@@ -7,6 +7,22 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
 
 ### Added
 
+- The `hmp-housewars` gamemode: houses fight each other for the House Cup. Players join a battle lobby as
+  their character's house (`/housewars host [arena]`, `join`, `start`), and the houses fight
+  best-of-`rounds` elimination rounds in an arena, a configured one or open ground around the host.
+  `/activities start` cannot start a hosted lobby; the housewars owner API can. Each round puts every
+  house in its own ground-snapped corner through a countdown. Fighters of different houses are then
+  hostile to each other through host pair overrides, with lock-on and a kneel finish, while housemates
+  never are, and an `hmp-pvp` rule keeps every hit non-lethal. Everyone is held inside the arena until the
+  round ends. A round goes to the last house standing, or to the one with the most fighters up when time
+  runs out. Health recovery runs only between rounds. Fighters who leave are removed from the match's
+  fighter set, and kneeling fighters stand up when released. The winning house earns `housePoints.win`
+  and every house that fought `housePoints.participation` through the `hmp-houses` ledger, but only after
+  a round that ran `minPayoutRoundSeconds` or had KOs by `minPayoutKillers` different fighters. The
+  cooldown applies to the same house and the same group of fighters, and a daily cap limits each house;
+  both come from the ledger's history, so they survive a restart. Every match that started raises
+  `hmp-housewars:finished` once, also with a stopped result when the resource stops or the activity is
+  cancelled outside the gamemode.
 - `design/arcanum` is the single source of the Arcanum look: `tokens.css` (colour, type, space, corners,
   elevation and motion as `--arc-*` properties) and the Cinzel and Spectral fonts with their OFL licences.
   Spectral SemiBold joins Spectral Regular. `scripts/arcanum.mjs` copies it into a resource's `dist/`, so

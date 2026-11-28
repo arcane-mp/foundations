@@ -33,12 +33,13 @@ export interface InternalSession<P extends HmpActivityPlayer> extends Omit<HmpAc
 }
 
 export interface NormalizedDefinition<P extends HmpActivityPlayer> extends Required<Omit<HmpActivityDefinition<P>,
-    "description" | "roles" | "teams" | "canCreate" | "canJoin" | "onCreated" | "onJoined" | "onLeft" | "onStarted" | "onCompleted" | "onCancelled">> {
+    "description" | "roles" | "teams" | "canCreate" | "canJoin" | "canStart" | "onCreated" | "onJoined" | "onLeft" | "onStarted" | "onCompleted" | "onCancelled">> {
     description: string;
     roles: NonNullable<HmpActivityDefinition<P>["roles"]>;
     teams: NonNullable<HmpActivityDefinition<P>["teams"]>;
     canCreate?: HmpActivityDefinition<P>["canCreate"];
     canJoin?: HmpActivityDefinition<P>["canJoin"];
+    canStart?: HmpActivityDefinition<P>["canStart"];
     onCreated?: HmpActivityDefinition<P>["onCreated"];
     onJoined?: HmpActivityDefinition<P>["onJoined"];
     onLeft?: HmpActivityDefinition<P>["onLeft"];
