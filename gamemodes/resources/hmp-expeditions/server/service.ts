@@ -152,8 +152,7 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
             const since = party.missing.get(id);
             if (since === undefined) { party.missing.set(id, now()); continue; }
             if (now() - since < VANISH_GRACE_MS) continue;
-            everyone(party, `Stage ${stageNumber(party)}: an enemy vanished; expedition failed`);
-            void finish(party, "failed", true);
+            void finish(party, "failed", true, "an enemy vanished");
             return true;
         }
         return false;
@@ -348,8 +347,7 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
         const label = `Stage ${stageNumber(party)}/${party.expedition.stages.length}`;
         if (!orders.length) {
             // No free hmp-npcs slots: a stage with nothing to fight would never clear.
-            everyone(party, `${label}: hmp-npcs has no room for its enemies; expedition failed`);
-            void finish(party, "failed", true);
+            void finish(party, "failed", true, "hmp-npcs has no room for its enemies");
             return;
         }
         let spawned = 0;
@@ -372,8 +370,7 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
                 if (!placed) {
                     // A player in world 7000 cannot fight an NPC left in world 0, so end the run now.
                     try { npcs.destroy(npc.id, RESOURCE); } catch (_) { /* gone */ }
-                    everyone(party, `${label}: the host could not instance its enemies; expedition failed`);
-                    void finish(party, "failed", true);
+                    void finish(party, "failed", true, "the host could not instance its enemies");
                     return;
                 }
             }
@@ -384,8 +381,7 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
         if (spawned < orders.length) {
             // A short stage cannot pay or set a record: the boss would otherwise be missing on a clear.
             const missingBoss = orders.slice(spawned).some((order) => order.boss);
-            everyone(party, `${label}: ${missingBoss ? "its final foe" : "its enemies"} could not be summoned; expedition failed`);
-            void finish(party, "failed", true);
+            void finish(party, "failed", true, `${missingBoss ? "its final foe" : "its enemies"} could not be summoned`);
             return;
         }
         everyone(party, `${label}: ${stage.boss ? "the final foe awaits" : `${spawned} enemies`} at the marker`);
@@ -467,7 +463,8 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
         }
     }
 
-    async function finish(party: Party, result: Result, complete: boolean): Promise<void> {
+    /** `reason` says why a failed run failed. */
+    async function finish(party: Party, result: Result, complete: boolean, reason = ""): Promise<void> {
         const run = party.run;
         if (!run || party.phase === "done" || run.result) return;
         run.finish(result);
@@ -503,7 +500,7 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
             timeout: `${party.expedition.label} failed: time ran out at stage ${stageNumber(party)}`,
             abandoned: `${party.expedition.label} was abandoned`,
             stopped: `${party.expedition.label} was stopped`,
-            failed: `${party.expedition.label} failed at stage ${stageNumber(party)}: its enemies could not be summoned`,
+            failed: `${party.expedition.label} failed at stage ${stageNumber(party)}${reason ? `: ${reason}` : ""}`,
         };
         everyone(party, messages[result]);
         const event: HmpExpeditionFinished = {

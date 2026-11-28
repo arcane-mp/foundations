@@ -293,7 +293,7 @@ test("fails unpaid when a stage summons no enemies", async () => {
     await service.host(p1, "ruins");
     await service.start(p1);
     time.advance(3000);
-    assert.ok(p1.said.some((line) => /its enemies could not be summoned; expedition failed/.test(line)));
+    assert.ok(p1.said.some((line) => /Forgotten Ruins failed at stage 1: its enemies could not be summoned$/.test(line)));
     await tick();
     assert.deepStrictEqual([finished[0].result, finished[0].defeated, rewards.length, store.record("ruins")], ["failed", 0, 0, null]);
     assert.strictEqual(spawned.length, 0, "the boss is ordered first and fails the run up front");
@@ -322,7 +322,7 @@ test("spawns the boss first and fails without pay or record when a stage comes u
     await tick();
     assert.deepStrictEqual(spawned.map((npc) => npc.enemyId), ["Goblin_Melee", "Goblin_Melee", "Troll_Forest"]);
     assert.ok(destroyed.includes(502), "the boss already summoned is cleaned up");
-    assert.ok(p1.said.some((line) => /its enemies could not be summoned; expedition failed/.test(line)));
+    assert.ok(p1.said.some((line) => /Forgotten Ruins failed at stage 2: its enemies could not be summoned$/.test(line)));
     assert.deepStrictEqual([finished[0].result, rewards.length, store.record("ruins")], ["failed", 0, null]);
     await service.stop();
 });
@@ -367,7 +367,7 @@ test("fails the run when hmp-npcs has no free slots for a stage", async () => {
     await service.start(p1);
     time.advance(3000);
     await tick();
-    assert.ok(p1.said.some((line) => /Stage 1\/2: hmp-npcs has no room for its enemies; expedition failed/.test(line)));
+    assert.ok(p1.said.some((line) => /failed at stage 1: hmp-npcs has no room for its enemies$/.test(line)));
     assert.ok(!p1.said.some((line) => /0 enemies/.test(line)), "no stage opens empty");
     assert.deepStrictEqual([spawned.length, finished[0].result, rewards.length, store.record("ruins"), time.pending()], [0, "failed", 0, null, 0]);
     await service.stop();
@@ -383,6 +383,7 @@ test("fails the run when the host will not instance its enemies", async () => {
         time.advance(3000);
         await tick();
         assert.deepStrictEqual([spawned.length, destroyed, finished[0].result, rewards.length, store.record("ruins")], [1, [500], "failed", 0, null]);
+        assert.deepStrictEqual(p1.said.filter((line) => /failed/.test(line)), ["Forgotten Ruins failed at stage 1: the host could not instance its enemies"], "said once, with its reason");
         assert.deepStrictEqual(service.status().parties, []);
         await service.stop();
     }
@@ -400,7 +401,7 @@ test("fails the run when a standing enemy vanishes without an npcDied event", as
     assert.strictEqual(finished.length, 0, "a missing enemy has a grace for its npcDied");
     time.advance(2000);
     await tick();
-    assert.ok(p1.said.some((line) => /an enemy vanished; expedition failed/.test(line)));
+    assert.ok(p1.said.some((line) => /failed at stage 1: an enemy vanished$/.test(line)));
     assert.deepStrictEqual([finished[0].result, rewards.length, store.record("ruins")], ["failed", 0, null]);
     assert.deepStrictEqual(destroyed, [501], "the standing foe is removed on failure");
     await service.stop();
@@ -416,7 +417,7 @@ test("fails the run when hmp-npcs drops every enemy and nothing else happens", a
     for (const npc of spawned) context.vanish(npc.id);
     time.advance(8000);
     await tick();
-    assert.ok(p1.said.some((line) => /an enemy vanished; expedition failed/.test(line)));
+    assert.ok(p1.said.some((line) => /failed at stage 1: an enemy vanished$/.test(line)));
     assert.deepStrictEqual([finished[0].result, rewards.length, context.time.pending()], ["failed", 0, 0]);
     await service.stop();
 });
