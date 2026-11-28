@@ -43,6 +43,21 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   Spectral SemiBold joins Spectral Regular. `scripts/arcanum.mjs` copies it into a resource's `dist/`, so
   each resource keeps shipping its own copy. `hmp-ui`, `hmp-characters` and `hmp-inventory` now take their
   fonts from it instead of three identical copies; their builds produce the same files as before.
+- The `hmp-racing` gamemode: broom races through checkpoint courses. A host opens a race lobby with
+  `/race host <track>`, others `/race join`, and `/race start` puts everyone on a grid, holds them through
+  a countdown, and turns their fast travel off until the race ends. The server samples every racer's
+  position and judges each gate along the path between samples, lap by lap, so no client reports its own
+  progress. A first sample over `maxSpeedCmPerSecond` keeps the last good position and passes no gates,
+  and a teleport stays over the limit and disqualifies on the second sample. A stalled position that
+  repeats the last one does not move the clock, so the catch-up after lag is measured over the whole
+  stall. The first finisher starts a grace period for the rest. Racers see their next gates as shapes and
+  a HUD with place, lap, gate and time. Editors build tracks in game by flying them
+  (`/race edit new`, `point`, `save`), stored in `hmp-worldstate` one key per gate, or list them in
+  `data/hmp-racing.json`. Personal bests are kept for every finished run; the track record is only taken
+  from ranked runs. `minimumRacers` sets how many racers must have finished or still be flying when the
+  first one crosses the line for the run to be ranked, so one who leaves or falls out before then does not
+  count and one who quits during the grace period cannot unrank the winner; every race raises
+  `hmp-racing:finished` with its results and `ranked` flag.
 - `hmp-duels` ranks duelists. Every duel that began and has a winner is recorded against both duelists'
   characters, captured as the countdown starts, in `hmp_duel_matches`; a knock-out, a forfeit or a
   disconnect after the fight starts also moves an Elo rating in `hmp_duel_ratings` (1000 to start, K 48
