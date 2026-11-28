@@ -101,7 +101,10 @@ function setup(
             awards.push([house, amount, reference]);
             ledger.push({ id: ledger.length + 1, reference, house, amount, balanceAfter: null, actorCharacterId: null, resource: RESOURCE, reason, metadata: metadata || {}, status: "completed", error: "", createdAt: new Date(time.now()), completedAt: new Date(time.now()) });
         },
-        history: async (house) => ledger.filter((row) => row.house === house).map((row) => ({ ...row })),
+        // Like hmp-houses: the newest 200 rows of every resource.
+        history: async (house) => ledger.filter((row) => row.house === house).slice(-200).reverse().map((row) => ({ ...row })),
+        total: async (house, since) => ledger.filter((row) => row.house === house && row.resource === RESOURCE && row.status !== "failed" && new Date(row.createdAt).getTime() >= since)
+            .reduce((sum, row) => sum + row.amount, 0),
         emit: (player, event, payload) => player.emit(event, payload),
         say: (player, message) => { (player as TestPlayer).said.push(message); },
         finished: (event) => { finished.push(event); },
@@ -345,6 +348,28 @@ test("caps the points a house can receive in a day", async () => {
     await quickMatch([1, 3]);
     await quickMatch([2, 4]);
     assert.deepStrictEqual(awards.map(([house]) => house), ["gryffindor", "slytherin", "slytherin"], "the second win is under the daily cap");
+    await service.stop();
+});
+
+test("the daily cap counts every row this resource paid today, however busy the ledger is", async () => {
+    const context = setup({ rounds: 1, minPayoutKillers: 1, housePointsCooldownSeconds: 0, housePointsDailyCap: 200 });
+    const { time, service, awards, ledger, warnings } = context;
+    const midnight = new Date(time.now()); midnight.setHours(0, 0, 0, 0);
+    const row = (reference: string, amount: number, resource: string, at: number): HmpHousePointTransaction => ({
+        id: ledger.length + 1, reference, house: "gryffindor", amount, balanceAfter: null, actorCharacterId: null, resource, reason: "", metadata: {},
+        status: "completed", error: "", createdAt: new Date(at), completedAt: new Date(at),
+    });
+    ledger.push(row("yesterday", 500, RESOURCE, midnight.getTime() - 1000));
+    ledger.push(row("earlier-today", 150, RESOURCE, midnight.getTime() + 1000));
+    // A busy day: the earlier payout falls out of the newest 200 rows of all resources.
+    for (let i = 0; i < 250; i++) ledger.push(row(`quidditch:${i}`, 1, "hmp-quidditch", time.now()));
+    await lobby(context, [1, 3]);
+    await service.start(context.players[0]);
+    time.advance(3000);
+    service.defeated(3, 1);
+    await tick();
+    assert.deepStrictEqual(awards.map(([house]) => house), ["slytherin"], "150 earlier today + 60 is over 200; yesterday and other resources do not count");
+    assert.ok(warnings.some((line) => /gryffindor points: daily cap/.test(line)));
     await service.stop();
 });
 

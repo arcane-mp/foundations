@@ -37,7 +37,9 @@ an `hmp-duels` loser kneels.
    single knock-out, a fall, or a match of forfeits alone pays nobody. The cooldown of
    `housePointsCooldownSeconds` applies to the same house and the same group of fighters, and a house
    can receive at most `housePointsDailyCap` points per day from this gamemode. Cooldowns and the daily
-   total come from the `hmp-houses` ledger, so they survive a restart.
+   total come from the `hmp-houses` ledger, so they survive a restart. The daily total is the ledger's
+   own sum of this gamemode's rows for the house since local midnight (`points.total`), so other
+   resources' rows on a busy day cannot push earlier payouts out of the count.
 
 A fighter who falls to anything other than a rival (`playerDied`) is down for the round, and stands up
 when released. A fighter who retires with `/housewars leave` or disconnects is out of the match and stood

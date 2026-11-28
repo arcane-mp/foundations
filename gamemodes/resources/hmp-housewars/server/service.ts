@@ -46,8 +46,10 @@ export interface HouseWarsDependencies {
     endKneel(playerId: number): void;
     /** House Cup points through the hmp-houses ledger; the reference makes a retry harmless. */
     award(house: HmpHouseWarsHouse, amount: number, reference: string, reason: string, metadata?: Record<string, unknown>): Promise<void>;
-    /** Past ledger rows, so cooldowns and daily caps survive a restart. */
+    /** Past ledger rows, so cooldowns survive a restart. */
     history(house: HmpHouseWarsHouse): Promise<HmpHousePointTransaction[]>;
+    /** Points this resource paid the house since a moment, summed by the ledger with no row limit, for the daily cap. */
+    total(house: HmpHouseWarsHouse, since: number): Promise<number>;
     emit(player: HouseWarsPlayer, event: string, payload: unknown): void;
     say(player: HouseWarsPlayer, message: string): void;
     finished(event: HmpHouseWarsFinished): void;
@@ -87,7 +89,12 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
         const date = new Date(at);
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     }
-    const playersKey = (ids: number[]) => [...ids].sort((a, b) => a - b).join(",");
+    function midnight(at: number): number {
+        const date = new Date(at);
+        date.setHours(0, 0, 0, 0);
+        return date.getTime();
+    }
+    const playersKey =(ids: number[]) => [...ids].sort((a, b) => a - b).join(",");
     function ledgerPlayers(row: HmpHousePointTransaction): string | null {
         const ids = row.metadata?.players;
         return Array.isArray(ids) && ids.every((id) => Number.isFinite(id)) ? playersKey(ids as number[]) : null;
@@ -425,8 +432,7 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
                     const recent = config.housePointsCooldownSeconds > 0 && rows.some((row) => row.resource === RESOURCE && row.status !== "failed"
                         && ledgerPlayers(row) === key && at - new Date(row.createdAt).getTime() < config.housePointsCooldownSeconds * 1000);
                     if (recent) { dependencies.warn?.(`Skipping ${house} points: these players fought too recently`); continue; }
-                    const paid = rows.filter((row) => row.resource === RESOURCE && row.status !== "failed" && dayKey(row.createdAt) === day)
-                        .reduce((total, row) => total + row.amount, 0)
+                    const paid = await dependencies.total(house, midnight(at))
                         + [...reserving.entries()].filter(([reservedKey, value]) => reservedKey !== reservationKey && reservedKey.startsWith(`${house}|`) && value.day === day)
                             .reduce((total, [, value]) => total + value.amount, 0);
                     if (config.housePointsDailyCap > 0 && paid + amount > config.housePointsDailyCap) {

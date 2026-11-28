@@ -33,6 +33,7 @@ const battles = createHouseWarsService({
     endKneel: (id) => { try { PlayerManager.getById(id)?.endKneel?.(); } catch (_) { /* left */ } },
     award: async (house, amount, reference, reason, metadata) => { await Houses.points.award(house, amount, { reference, resource: RESOURCE, reason, metadata }); },
     history: (house) => Houses.points.history(house, 200),
+    total: (house, since) => Houses.points.total(house, { resource: RESOURCE, since }),
     emit: (player, event, payload) => player.emit(event, payload),
     say: (player, message) => player.sendChat?.(`[HOUSES] ${message}`),
     finished: (event: HmpHouseWarsFinished) => { Events.emit(`${RESOURCE}:finished`, event); },
