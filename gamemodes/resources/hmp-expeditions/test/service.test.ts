@@ -363,10 +363,35 @@ test("fails the run when a standing enemy vanishes without an npcDied event", as
     time.advance(3000);
     context.vanish(501);
     service.npcDied(500);
+    time.advance(4000);
+    assert.strictEqual(finished.length, 0, "a missing enemy has a grace for its npcDied");
+    time.advance(1000);
     await tick();
     assert.ok(p1.said.some((line) => /an enemy vanished; expedition failed/.test(line)));
     assert.deepStrictEqual([finished[0].result, rewards.length, store.record("ruins")], ["failed", 0, null]);
     assert.deepStrictEqual(destroyed, [501], "the standing foe is removed on failure");
+    await service.stop();
+});
+
+test("enemies dying together do not read as vanished", async () => {
+    const context = setup();
+    const { time, players: [p1], service, spawned, finished } = context;
+    await service.host(p1, "ruins");
+    await service.start(p1);
+    time.advance(3000);
+    // An area spell kills both goblins: hmp-npcs forgets the second before its npcDied reaches the expedition.
+    context.vanish(500);
+    context.vanish(501);
+    service.npcDied(500);
+    time.advance(1000);
+    service.npcDied(501);
+    time.advance(10_000);
+    assert.strictEqual(spawned.at(-1)!.enemyId, "Troll_Forest", "the next stage spawned");
+    assert.strictEqual(finished.length, 0);
+    p1.position = { x: 2000, y: 0, z: 0 };
+    service.npcDied(spawned.at(-1)!.id);
+    await tick();
+    assert.strictEqual(finished[0].result, "cleared");
     await service.stop();
 });
 

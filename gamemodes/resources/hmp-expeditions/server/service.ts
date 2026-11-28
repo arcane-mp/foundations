@@ -13,6 +13,8 @@ export const ACTIVITY_ID = "hmp-expeditions:run";
 const HOLD_OWNER = "hmp-expeditions";
 /** Reward only fighters still near the last fight, so an idle member at the entrance does not cash in. */
 const REWARD_RADIUS_CM = 1500;
+/** How long a standing enemy may read as gone before the run fails, for its npcDied to arrive. */
+const VANISH_GRACE_MS = 5000;
 
 export interface ExpeditionPlayer {
     id: number;
@@ -72,6 +74,8 @@ interface Party {
     previousWorld: Map<number, number>;
     ownerCursor: number;
     endsAt: number;
+    /** Standing enemies hmp-npcs no longer reports alive, and since when. */
+    missing: Map<number, number>;
 }
 
 export function createExpeditionService(dependencies: ExpeditionDependencies) {
@@ -140,7 +144,16 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
             for (const id of party.run.standing()) {
                 let snapshot: HmpNpcSnapshot | null = null;
                 try { snapshot = npcs.get(id); } catch (_) { /* gone */ }
-                if (snapshot?.alive) continue;
+                if (snapshot?.alive) { party.missing.delete(id); continue; }
+                // hmp-npcs forgets an NPC on its own npcDied, so when several die at once (an area spell) the others
+                // read as gone before their npcDied reaches us. Only one still gone after the grace fails the run.
+                const since = party.missing.get(id);
+                if (since === undefined) {
+                    party.missing.set(id, now());
+                    later(party, () => refresh(party), VANISH_GRACE_MS);
+                    continue;
+                }
+                if (now() - since < VANISH_GRACE_MS) continue;
                 everyone(party, `Stage ${stageNumber(party)}: an enemy vanished; expedition failed`);
                 void finish(party, "failed", true);
                 return;
@@ -218,7 +231,7 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
         const session = await activities.sessions.create(player, ACTIVITY_ID, { title: expedition.label, metadata: { expedition: expedition.id } });
         parties.set(session.id, {
             sessionId: session.id, expedition, phase: "forming", run: null, members: [], timers: new Set(),
-            world: 0, previousWorld: new Map(), ownerCursor: 0, endsAt: 0,
+            world: 0, previousWorld: new Map(), ownerCursor: 0, endsAt: 0, missing: new Map(),
         });
         byPlayer.set(player.id, session.id);
         return session;
@@ -380,6 +393,7 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
         const sessionId = byNpc.get(npcId);
         const party = sessionId ? parties.get(sessionId) : null;
         byNpc.delete(npcId);
+        party?.missing.delete(npcId);
         if (!party?.run || party.phase !== "running") return;
         if (party.run.killed(npcId)) stageCleared(party);
         else refresh(party);
