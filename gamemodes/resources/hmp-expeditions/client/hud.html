@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  hmp-expeditions HUD, driven by dist/client.js:
+    native -> page : Web.emit(view, "hud:update", HudState)  (see shared/types.ts)
+    page -> native : callEvent("ready", "{}")
+-->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+      -webkit-user-select: none; user-select: none; }
+    #hud {
+      position: fixed; top: 16px; left: 16px; min-width: 168px;
+      background: rgba(16, 13, 8, 0.60);
+      border: 1px solid rgba(201, 162, 90, 0.35); border-radius: 6px;
+      padding: 8px 12px 9px; color: #d5c8a9;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.40); backdrop-filter: blur(2px);
+      opacity: 0; transform: translateY(-4px); transition: opacity .25s ease, transform .25s ease;
+    }
+    #hud.show { opacity: 1; transform: none; }
+    #hud .title { font-family: 'Cinzel', Georgia, serif; font-size: 12px; letter-spacing: .16em;
+      text-transform: uppercase; color: #c19a4e; margin-bottom: 6px; }
+    #hud .rows { display: flex; gap: 13px; }
+    #hud .cell .k { font-family: Georgia, serif; font-size: 12px; letter-spacing: .08em;
+      text-transform: uppercase; color: #9c8f74; }
+    #hud .cell .v { font-family: Consolas, 'Courier New', monospace; font-size: 15px;
+      color: #f0e3c2; line-height: 1.15; }
+    #hud .boss { margin-top: 6px; font-family: 'Cinzel', Georgia, serif; font-size: 12px; color: #e6463c; display: none; }
+    #hud .foot { margin-top: 4px; font-family: Consolas, 'Courier New', monospace; font-size: 12px; color: #9c8f74; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="title" id="title">Expedition</div>
+    <div class="rows">
+      <div class="cell"><div class="k">Stage</div><div class="v" id="stage">–</div></div>
+      <div class="cell"><div class="k">Foes</div><div class="v" id="foes">–</div></div>
+      <div class="cell"><div class="k">Time left</div><div class="v" id="time">–</div></div>
+    </div>
+    <div class="boss" id="boss">The final foe</div>
+    <div class="foot" id="foot"></div>
+  </div>
+  <script>
+    var hud = document.getElementById('hud');
+    var state = null, received = 0, timer = null;
+    function format(ms) {
+      var total = Math.max(0, Math.round(ms / 1000));
+      return Math.floor(total / 60) + ':' + ('0' + total % 60).slice(-2);
+    }
+    function clock() {
+      if (!state) return;
+      document.getElementById('time').textContent = state.remainingMs ? format(state.remainingMs - (Date.now() - received)) : '–';
+    }
+    function render(data) {
+      if (!data || !data.active) { state = null; hud.classList.remove('show'); if (timer) { clearInterval(timer); timer = null; } return; }
+      state = data; received = Date.now();
+      document.getElementById('title').textContent = data.expedition;
+      document.getElementById('stage').textContent = data.stage + '/' + data.stages;
+      document.getElementById('foes').textContent = data.phase === 'countdown' ? '–' : String(data.remaining);
+      document.getElementById('boss').style.display = data.boss ? 'block' : 'none';
+      document.getElementById('foot').textContent = data.recordMs ? 'record ' + format(data.recordMs) : '';
+      clock();
+      if (!timer) timer = setInterval(clock, 500);
+      hud.classList.add('show');
+    }
+    window.addEventListener('hud:update', function (event) { render(event.detail); });
+    if (typeof callEvent === 'function') callEvent('ready', '{}');
+  </script>
+</body>
+</html>
