@@ -273,6 +273,22 @@ test("rechecks every participant's house at start", async () => {
     await service.stop();
 });
 
+test("checks the house of a team changed while the start's checks await", async () => {
+    let context!: ReturnType<typeof setup>;
+    let switched = false;
+    context = setup({}, undefined, async (player) => {
+        if (player.id !== 1 || switched || !context.service.status().battles.length) return;
+        switched = true;
+        await context.activities.sessions.select(context.players[4], context.service.status().battles[0].sessionId, { team: "slytherin" });
+    });
+    const { players: [p1, , , , p5], service, activities } = context;
+    await lobby(context, [1, 3, 5]);
+    assert.strictEqual(activities.sessions.get(service.status().battles[0].sessionId)!.participants.find((entry) => entry.playerId === p5.id)!.team, "ravenclaw");
+    await assert.rejects(() => service.start(p1), /P5 is no longer in Slytherin/);
+    assert.strictEqual(switched, true);
+    await service.stop();
+});
+
 test("reads a player-scoped cooldown from the ledger, not a per-house memory timer", async () => {
     const context = setup({ housePointsCooldownSeconds: 60, rounds: 1, minPayoutKillers: 1 });
     const { time, service, awards, ledger, warnings } = context;

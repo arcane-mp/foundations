@@ -17,8 +17,9 @@ an `hmp-duels` loser kneels.
    character without a house cannot join.
 3. The host runs `/housewars start`. Only a lobby opened by `/housewars host` can start. Every
    participant's house is re-read from `hmp-houses`, so a team changed with `/activities role` cannot
-   pass. The session is read again after the checks and after the start, so a fighter who leaves during
-   either await is not sent into the match. `/activities start` is refused on a hosted lobby; use
+   pass. The lobby is read again after the checks, and anyone who joined or changed team meanwhile is
+   checked too, until nobody in it is unchecked; the match is built from that lobby. It is read once more
+   after the start, so a fighter who leaves during either await is not sent into the match. `/activities start` is refused on a hosted lobby; use
    `/housewars start`. The houses must number at least two, at most `maxImbalance` apart.
 4. Each round, every house is put in its own corner of the arena, facing the centre, snapped to the
    ground and held there through a countdown. At "Fight!" fighters of different houses become hostile to each other, with

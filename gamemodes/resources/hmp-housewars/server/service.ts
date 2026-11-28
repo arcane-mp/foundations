@@ -286,15 +286,22 @@ export function createHouseWarsService(dependencies: HouseWarsDependencies) {
         const session = activities.sessions.get(battle.sessionId);
         if (!session || session.leaderPlayerId !== player.id) fail("Only the battle's host can start it");
         if (session.metadata?.hostedBy !== HOSTED_BY) fail("This lobby was not opened with /housewars host");
-        // Teams can be changed with /activities role, so trust the ledger, not the lobby's team field.
-        for (const entry of session.participants) {
-            const fighter = dependencies.player(entry.playerId);
-            const house = fighter ? await dependencies.house(fighter) : null;
-            if (!house || house !== entry.team) fail(`${entry.nickname} is no longer in ${label(entry.team as HmpHouseWarsHouse)}; ask them to rejoin`);
+        // Teams can be changed with /activities role, so trust the ledger, not the lobby's team field. Each await
+        // lets players join, leave or change team, so re-read the lobby and check until nobody in it is unchecked;
+        // the match is built from that same fresh session, not the first snapshot.
+        const checked = new Map<number, string | null>();
+        let current = session;
+        for (;;) {
+            const unchecked = current.participants.filter((entry) => checked.get(entry.playerId) !== entry.team);
+            if (!unchecked.length) break;
+            for (const entry of unchecked) {
+                const fighter = dependencies.player(entry.playerId);
+                const house = fighter ? await dependencies.house(fighter) : null;
+                if (!house || house !== entry.team) fail(`${entry.nickname} is no longer in ${label(entry.team as HmpHouseWarsHouse)}; ask them to rejoin`);
+                checked.set(entry.playerId, entry.team);
+            }
+            current = activities.sessions.get(battle.sessionId) ?? fail("The battle lobby is gone");
         }
-        // The awaits above let fighters leave; build the match from a fresh session, not the old snapshot.
-        const current = activities.sessions.get(battle.sessionId);
-        if (!current) fail("The battle lobby is gone");
         const counts = HOUSES.map((house) => current.participants.filter((entry) => entry.team === house).length).filter(Boolean);
         if (counts.length < 2) fail("A house battle needs fighters from at least two houses");
         if (config.maxImbalance > 0 && Math.max(...counts) - Math.min(...counts) > config.maxImbalance) {
