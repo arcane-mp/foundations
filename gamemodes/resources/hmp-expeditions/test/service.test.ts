@@ -340,6 +340,20 @@ test("clamps a stage to the free hmp-npcs capacity", async () => {
     assert.strictEqual(finished[0].result, "stopped");
 });
 
+test("fails the run when hmp-npcs has no free slots for a stage", async () => {
+    const context = setup();
+    context.setCapacity(0);
+    const { time, players: [p1], service, spawned, finished, rewards, store } = context;
+    await service.host(p1, "ruins");
+    await service.start(p1);
+    time.advance(3000);
+    await tick();
+    assert.ok(p1.said.some((line) => /Stage 1\/2: hmp-npcs has no room for its enemies; expedition failed/.test(line)));
+    assert.ok(!p1.said.some((line) => /0 enemies/.test(line)), "no stage opens empty");
+    assert.deepStrictEqual([spawned.length, finished[0].result, rewards.length, store.record("ruins"), time.pending()], [0, "failed", 0, null, 0]);
+    await service.stop();
+});
+
 test("fails the run when the host will not instance its enemies", async () => {
     for (const result of [false, "throw"] as const) {
         const context = setup({ instanced: true });

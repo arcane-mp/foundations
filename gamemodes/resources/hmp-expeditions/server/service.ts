@@ -346,6 +346,12 @@ export function createExpeditionService(dependencies: ExpeditionDependencies) {
         const orders = run.advance(Math.min(config.maxEnemiesPerStage, freeEnemySlots()));
         const stage = run.current!;
         const label = `Stage ${stageNumber(party)}/${party.expedition.stages.length}`;
+        if (!orders.length) {
+            // No free hmp-npcs slots: a stage with nothing to fight would never clear.
+            everyone(party, `${label}: hmp-npcs has no room for its enemies; expedition failed`);
+            void finish(party, "failed", true);
+            return;
+        }
         let spawned = 0;
         for (const [index, order] of orders.entries()) {
             const spot = spawnRing(stage, index, orders.length);
