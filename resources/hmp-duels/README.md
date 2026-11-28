@@ -44,7 +44,85 @@ Commands (a player id takes a `#`, as in `/duel #5`):
 /duel cancel
 /duel forfeit
 /duel status
+/duel rank [#playerId|nickname]
+/duel top
+/duel history [#playerId|nickname]
 ```
+
+`rank`, `top` and `history` share one bucket of five queries per player in five seconds, so a player
+cannot spam database reads from chat.
+
+## Ranking
+
+Every duel that began and has a winner is recorded against both duelists' characters, and the ones that
+end the configured ways after the fight starts move an Elo rating. The characters are captured as the
+countdown starts, so a duelist who leaves or switches character mid-duel still answers for that duel.
+Ratings live in `hmp_duel_ratings` and every recorded duel in `hmp_duel_matches`, both created by
+`hmp-duels`'s own migration. hmp-core soft-deletes characters: a deleted character keeps its row, but
+drops out of `rank`, `top` and `history`, while its opponent's history keeps the duel.
+
+- A character starts at `initialRating` (1000). Even ratings move by half of K; an upset moves more than
+  an expected win, a win always gains at least one point, and no loss takes a rating below `floor`.
+- During a character's first `provisionalMatches` duels it moves by `provisionalKFactor` (48), then by
+  `kFactor` (32). Each side uses its own K.
+- Only the endings in `ratedReasons` count: a knock-out, a forfeit or a disconnect by default. A duel
+  that ends another way (`died`, unless listed) is kept in the history, unrated. A duel finished before
+  the countdown ends is unrated, as is one that ends any way but a knock-out within
+  `minimumFightSeconds` (3 s) of the fight starting; a quick forfeit or quitting the game cannot buy
+  a free win.
+- Two characters who duel each other more than `repeatLimit` rated times within `repeatWindowMinutes`
+  play the rest unrated. The same count applies to the two accounts, stored as low and high account ids
+  on the match row, so rotating characters does not reset it. `repeatLimit: 0` turns this off. The limit
+  is a rolling window: after `repeatWindowMinutes` the pair can rate duels again.
+- `dailyPairLimit` caps rated duels for one pair at 10 in 24 hours, character pair and account pair
+  alike, so a pair cannot trade 72 wins a day by waiting out each hour. `dailyPairLimit: 0` turns it off.
+- A character takes a rank after `minimumMatches` rated duels; ties share a rank. Only active characters
+  appear in `rank`, `top` and `history`.
+- A duelist without a loaded character fights as before, and the duel is not recorded.
+
+After each recorded duel both duelists see their new rating (or why it was unrated), and the server raises
+`hmp:duels:rated` with the match, both player ids and the reason it was left unrated, if it was. A player id
+is nulled once that player no longer holds the character that fought: trust the match's character ids.
+
+```js
+Events.on("hmp:duels:rated", ({ match, winnerPlayerId, unrated }) => { /* ... */ });
+```
+
+The `ranking` export reads the same data for other resources:
+
+```js
+const ranking = Imports.get("hmp-duels").ranking;
+await ranking.standing(characterId); // { rating, wins, losses, streak, bestStreak, rank, ... }
+await ranking.leaderboard(10);
+await ranking.history(characterId, 5);
+```
+
+`ranking` in `data/hmp-duels.json` (all optional):
+
+```json
+{
+  "ranking": {
+    "enabled": true,
+    "initialRating": 1000,
+    "kFactor": 32,
+    "provisionalKFactor": 48,
+    "provisionalMatches": 10,
+    "floor": 100,
+    "ratedReasons": ["ko", "forfeit", "disconnect"],
+    "repeatLimit": 3,
+    "repeatWindowMinutes": 60,
+    "dailyPairLimit": 10,
+    "minimumFightSeconds": 3,
+    "leaderboardSize": 10,
+    "minimumMatches": 1
+  }
+}
+```
+
+`enabled: false` records nothing, creates no tables, imports no `hmp-mysql` at runtime and answers the
+ranking commands with an error. The resource manifest still declares `hmp-mysql` as a dependency, as
+`hmp-core` and the rest of the pack do, so a database is required to load this pack. A value out of range
+stops the resource at startup, as `hmp-duels`'s other settings do.
 
 Challenge consent uses `hmp-ui`, whose bundled Arcanum renderer remains the default and whose external
 renderer contract lets server owners replace the presentation. Input focus and control ownership are

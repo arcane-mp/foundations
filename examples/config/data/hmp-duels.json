@@ -5,5 +5,20 @@
   "invitationTtlSeconds": 30,
   "koHp": 1,
   "cosmeticGear": false,
-  "dodge": true
+  "dodge": true,
+  "ranking": {
+    "enabled": true,
+    "initialRating": 1000,
+    "kFactor": 32,
+    "provisionalKFactor": 48,
+    "provisionalMatches": 10,
+    "floor": 100,
+    "ratedReasons": ["ko", "forfeit", "disconnect"],
+    "repeatLimit": 3,
+    "repeatWindowMinutes": 60,
+    "dailyPairLimit": 10,
+    "minimumFightSeconds": 3,
+    "leaderboardSize": 10,
+    "minimumMatches": 1
+  }
 }

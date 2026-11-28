@@ -3,12 +3,12 @@
   "version": "0.12.0",
   "private": true,
   "author": "HogwartsMP",
-  "description": "Consensual, non-lethal wizard duels built on Foundations activities and composable PvP policy.",
+  "description": "Consensual, non-lethal wizard duels with persistent Elo ranking, built on Foundations activities and composable PvP policy.",
   "license": "SEE LICENSE IN LICENSE",
   "main": "dist/server.js",
   "scripts": {
     "build": "esbuild server/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/server.js --legal-comments=inline && esbuild client/main.ts --bundle --platform=browser --target=es2022 --format=iife --outfile=dist/client.js --legal-comments=inline",
-    "test": "tsx test/duels.test.ts",
+    "test": "tsx test/duels.test.ts && tsx test/ranking.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "smoke": "node test/bundle.test.js"
   },
@@ -23,11 +23,12 @@
     "files": [
       "dist/client.js"
     ],
-    "exports": ["challenge", "accept", "decline", "cancel", "forfeit", "status"],
+    "exports": ["challenge", "accept", "decline", "cancel", "forfeit", "status", "ranking"],
     "resourceDependencies": [
       { "name": "hmp-lib", "version": "0.12.0" },
       { "name": "hmp-ui", "version": "0.12.0" },
       { "name": "hmp-core", "version": "0.12.0" },
+      { "name": "hmp-mysql", "version": "0.12.0" },
       { "name": "hmp-activities", "version": "0.12.0" },
       { "name": "hmp-pvp", "version": "0.12.0" }
     ],

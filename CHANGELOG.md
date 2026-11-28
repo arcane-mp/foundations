@@ -43,6 +43,18 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   Spectral SemiBold joins Spectral Regular. `scripts/arcanum.mjs` copies it into a resource's `dist/`, so
   each resource keeps shipping its own copy. `hmp-ui`, `hmp-characters` and `hmp-inventory` now take their
   fonts from it instead of three identical copies; their builds produce the same files as before.
+- `hmp-duels` ranks duelists. Every duel that began and has a winner is recorded against both duelists'
+  characters, captured as the countdown starts, in `hmp_duel_matches`; a knock-out, a forfeit or a
+  disconnect after the fight starts also moves an Elo rating in `hmp_duel_ratings` (1000 to start, K 48
+  for a character's first ten duels and 32 after, never below 100). A duel that ends before the fight, or
+  any way but a knock-out within its first three seconds, is left unrated. A pair past three rated duels
+  in an hour, or ten in 24 hours, plays the rest unrated; the count covers the two accounts as well as the
+  two characters, so rotating characters does not reset it. `hmp:duels:rated` leaves out the player id of
+  a duelist who no longer holds the character that fought, and soft-deleted characters drop out of
+  `rank`, `top` and `history`. Both duelists see their new rating, and `/duel rank [player]`,
+  `/duel top` and `/duel history [player]` read it in chat, as does the new `ranking` export for other
+  resources. `ranking` in `data/hmp-duels.json` sets every value or turns the ranking off; with it off no
+  database is imported at runtime, though the pack still requires hmp-mysql through hmp-core.
 
 ### Changed
 
