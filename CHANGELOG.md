@@ -23,9 +23,10 @@ pre-`1.0.0` policy documented in [COMPATIBILITY.md](COMPATIBILITY.md#version-pol
   a HUD with place, lap, gate and time. Editors build tracks in game by flying them
   (`/race edit new`, `point`, `save`), stored in `hmp-worldstate` one key per gate, or list them in
   `data/hmp-racing.json`. Personal bests are kept for every finished run; the track record is only taken
-  from ranked runs. `minimumRacers` sets how many racers must finish or still be flying for the run to be
-  ranked, so one who leaves or falls out does not count; every race raises `hmp-racing:finished` with its
-  results and `ranked` flag.
+  from ranked runs. `minimumRacers` sets how many racers must have finished or still be flying when the
+  first one crosses the line for the run to be ranked, so one who leaves or falls out before then does not
+  count and one who quits during the grace period cannot unrank the winner; every race raises
+  `hmp-racing:finished` with its results and `ranked` flag.
 
 ### Changed
 

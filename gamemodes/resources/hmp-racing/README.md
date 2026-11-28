@@ -119,9 +119,10 @@ rejected.
 The coordinates above are placeholders. Author real tracks in game and `export` them. Tracks in the
 file are read-only in game, and an in-game track cannot take the id of one in the file.
 
-`minimumRacers` is how many racers must finish or still be flying at the end for the run to be ranked.
-Someone who left or fell out does not count, so a rival who quits just after "Go!" leaves the run
-unranked. A host may still start alone, but the event's `ranked` flag is false, so reward listeners
+`minimumRacers` is how many racers must have finished or still be flying when the first one crosses
+the line for the run to be ranked. Someone who left or fell out before then does not count, so a rival
+who quits just after "Go!" leaves the run unranked, while one who quits during the grace period cannot
+take the ranking from the winner. A host may still start alone, but the event's `ranked` flag is false, so reward listeners
 can skip the run, and only ranked runs set the track record. Set it to 1 to reward solo runs.
 
 `maxSpeedCmPerSecond` must sit above the fastest a mount flies on your server, boosts included. The

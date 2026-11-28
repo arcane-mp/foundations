@@ -171,6 +171,27 @@ test("a rival who leaves after Go does not make the run ranked", async () => {
     await service.stop(); await activities.stop();
 });
 
+test("a rival who leaves or falls during the grace period cannot take the winner's record", async () => {
+    for (const out of ["leave", "fall"] as const) {
+        const { time, players: [poppy, natsai], activities, service, finished, tracks, fly } = setup();
+        await service.host(poppy, "meadow");
+        await service.join(natsai);
+        await service.start(poppy);
+        time.advance(3000);
+        for (let x = 0; x <= 21_000; x += 1_500) fly(poppy, x);
+        assert.ok(natsai.said.some((line) => /10 seconds left to finish/.test(line)), out);
+        if (out === "leave") assert.strictEqual(await service.leave(natsai), true);
+        else service.died(natsai.id);
+        await tick(); await tick();
+        assert.strictEqual(finished.length, 1, out);
+        assert.strictEqual(finished[0].ranked, true, `the run was ranked when Poppy finished (${out})`);
+        assert.deepStrictEqual(finished[0].results.map((result) => result.status), ["finished", out === "leave" ? "left" : "disqualified"]);
+        assert.strictEqual(finished[0].results[0].trackRecord, true, out);
+        assert.strictEqual(tracks.record("meadow")?.timeMs, finished[0].results[0].timeMs);
+        await service.stop(); await activities.stop();
+    }
+});
+
 test("ends the race after the grace time, and disqualifies a teleport", async () => {
     const { time, players: [poppy, natsai, sebastian], activities, service, finished, fly } = setup();
     await service.host(poppy, "meadow");

@@ -67,6 +67,7 @@ test("runs a race: gates in order, laps, places and finish times", () => {
     assert.strictEqual(race.running, true, "Natsai still flies");
     assert.strictEqual(race.leave(2), true);
     assert.strictEqual(race.running, false);
+    assert.deepStrictEqual([race.contendersAtFirstFinish, race.contenders()], [2, 1], "counted when Poppy finished");
     assert.deepStrictEqual(race.standings().map((racer) => [racer.playerId, racer.status]), [[1, "finished"], [2, "left"]]);
 });
 

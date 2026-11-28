@@ -352,8 +352,9 @@ export function createRacingService(dependencies: RacingDependencies) {
         clearTimers(record);
         const race = record.race;
         const at = new Date(now()).toISOString();
-        // Only racers who finished or were still flying count; one who left or fell out does not prop up a run.
-        const ranked = race.list().filter((state) => state.status === "finished" || state.status === "racing").length >= config.minimumRacers;
+        // Racers who had finished or were still flying when the first one crossed the line count: one who left or fell
+        // out before does not prop up a run, and one who quits during the grace period cannot take it from the winner.
+        const ranked = (race.contendersAtFirstFinish ?? race.contenders()) >= config.minimumRacers;
         const results: HmpRacingResult[] = [];
         for (const state of race.standings()) {
             const result: HmpRacingResult = {

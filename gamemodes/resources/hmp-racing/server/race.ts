@@ -67,6 +67,7 @@ export class Race {
     private readonly rules: RaceRules;
     private readonly racers = new Map<number, RacerState>();
     private finishers = 0;
+    private firstFinishContenders: number | null = null;
 
     constructor(track: HmpRacingTrack, racers: Racer[], startedAt: number, rules: RaceRules) {
         if (!track.checkpoints.length) throw new Error(`Track ${track.id} has no checkpoints`);
@@ -154,6 +155,7 @@ export class Race {
                 racer.status = "finished";
                 racer.finishMs = elapsed;
                 racer.place = this.finishers;
+                if (this.finishers === 1) this.firstFinishContenders = this.contenders();
                 events.push({ type: "finish", playerId, place: racer.place, timeMs: elapsed });
             }
         }
@@ -175,8 +177,14 @@ export class Race {
         return true;
     }
 
+    /** How many racers have finished or are still racing. */
+    contenders(): number { return this.list().filter((racer) => racer.status === "finished" || racer.status === "racing").length; }
+
     /** Whether anyone is still racing. */
     get running(): boolean { return this.list().some((racer) => racer.status === "racing"); }
+
+    /** Racers who had finished or were still racing when the first one crossed the line; null until then. */
+    get contendersAtFirstFinish(): number | null { return this.firstFinishContenders; }
 
     get firstFinishMs(): number | null {
         const times = this.list().map((racer) => racer.finishMs).filter((value): value is number => value !== null);

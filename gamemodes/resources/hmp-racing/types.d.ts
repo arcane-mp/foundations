@@ -50,7 +50,7 @@ export interface HmpRacingFinished {
     track: string;
     trackLabel: string;
     laps: number;
-    /** False when fewer than minimumRacers started; rewards should skip these. */
+    /** False when fewer than minimumRacers had finished or were still racing at the first finish; rewards should skip these. */
     ranked: boolean;
     /** In finishing order, then the racers who did not finish. */
     results: HmpRacingResult[];
